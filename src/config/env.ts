@@ -18,6 +18,8 @@ export const envSchema = z
           .filter(Boolean),
       ),
     SWAGGER_ENABLED: z.stringbool().optional(),
+    DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+    REDIS_URL: z.url({ protocol: /^rediss?$/ }),
   })
   .transform((env) => ({
     ...env,
