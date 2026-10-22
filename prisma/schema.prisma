@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RankedQueue {
+  SOLO @map("solo")
+  FLEX @map("flex")
+
+  @@map("ranked_queue")
+}
+
+enum Tier {
+  IRON        @map("iron")
+  BRONZE      @map("bronze")
+  SILVER      @map("silver")
+  GOLD        @map("gold")
+  PLATINUM    @map("platinum")
+  EMERALD     @map("emerald")
+  DIAMOND     @map("diamond")
+  MASTER      @map("master")
+  GRANDMASTER @map("grandmaster")
+  CHALLENGER  @map("challenger")
+
+  @@map("tier")
+}
+
+enum Division {
+  I
+  II
+  III
+  IV
+
+  @@map("division")
+}
+
+enum StaticDataKind {
+  CHAMPIONS       @map("champions")
+  ITEMS           @map("items")
+  RUNES           @map("runes")
+  SUMMONER_SPELLS @map("summoner_spells")
+
+  @@map("static_data_kind")
+}
+
+/// PUUID is encrypted per API key: gameName and tagLine are kept to re-resolve it after a key change.
+model RiotAccount {
+  puuid         String    @id @db.VarChar(78)
+  gameName      String    @map("game_name")
+  tagLine       String    @map("tag_line")
+  platform      String
+  profileIconId Int?      @map("profile_icon_id")
+  summonerLevel Int?      @map("summoner_level")
+  lastSyncedAt  DateTime? @map("last_synced_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  rankSnapshots RankSnapshot[]
+
+  @@index([gameName, tagLine])
+  @@map("riot_accounts")
+}
+
+model RankSnapshot {
+  id           Int         @id @default(autoincrement())
+  puuid        String      @db.VarChar(78)
+  queue        RankedQueue
+  tier         Tier
+  division     Division
+  leaguePoints Int         @map("league_points")
+  wins         Int
+  losses       Int
+  takenAt      DateTime    @default(now()) @map("taken_at") @db.Timestamptz(3)
+
+  account RiotAccount @relation(fields: [puuid], references: [puuid], onDelete: Cascade)
+
+  @@index([puuid, queue, takenAt(sort: Desc)])
+  @@map("rank_snapshots")
+}
+
+model Match {
+  matchId     String   @id @map("match_id")
+  platform    String
+  queueId     Int      @map("queue_id")
+  gameVersion String   @map("game_version")
+  patch       String
+  startedAt   DateTime @map("started_at") @db.Timestamptz(3)
+  durationSec Int      @map("duration_sec")
+  winnerTeam  Int?     @map("winner_team")
+  rawJson     Json     @map("raw_json")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  participants MatchParticipant[]
+  timeline     MatchTimeline?
+
+  @@map("matches")
+}
+
+/// No foreign key to riot_accounts: most participants are never looked up on the site.
+/// queueId and startedAt are copied from matches so match history is served by one index.
+model MatchParticipant {
+  matchId           String   @map("match_id")
+  participantId     Int      @map("participant_id")
+  puuid             String   @db.VarChar(78)
+  queueId           Int      @map("queue_id")
+  startedAt         DateTime @map("started_at") @db.Timestamptz(3)
+  teamId            Int      @map("team_id")
+  championId        Int      @map("champion_id")
+  role              String?
+  kills             Int
+  deaths            Int
+  assists           Int
+  damageToChampions Int      @map("damage_to_champions")
+  goldEarned        Int      @map("gold_earned")
+  cs                Int
+  visionScore       Int      @map("vision_score")
+  items             Int[]
+  summonerSpells    Int[]    @map("summoner_spells")
+  runes             Json
+  win               Boolean
+
+  match Match @relation(fields: [matchId], references: [matchId], onDelete: Cascade)
+
+  @@id([matchId, participantId])
+  @@index([puuid, startedAt(sort: Desc)])
+  @@index([puuid, queueId, startedAt(sort: Desc)])
+  @@map("match_participants")
+}
+
+model MatchTimeline {
+  matchId   String   @id @map("match_id")
+  frames    Json
+  events    Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  match Match @relation(fields: [matchId], references: [matchId], onDelete: Cascade)
+
+  @@map("match_timelines")
+}
+
+model StaticData {
+  patch     String
+  locale    String
+  kind      StaticDataKind
+  data      Json
+  fetchedAt DateTime       @default(now()) @map("fetched_at") @db.Timestamptz(3)
+
+  @@id([patch, locale, kind])
+  @@map("static_data")
+}
