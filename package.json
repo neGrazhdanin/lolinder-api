@@ -2,7 +2,7 @@
   "name": "lolinder-api",
   "version": "0.1.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=24.15"
