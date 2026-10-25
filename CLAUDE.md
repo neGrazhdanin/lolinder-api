@@ -14,13 +14,14 @@ the client), and commit the migration; never edit an applied migration.
 
 ## Architecture invariants
 
-- A user request never waits for the Riot API. Handlers read Postgres/Redis and enqueue a BullMQ job;
-  the worker (`src/worker.ts`) calls Riot, saves, and emits a WebSocket event.
+- The API never calls Riot. Handlers read Postgres/Redis and enqueue a BullMQ job; the worker
+  (`src/worker.ts`) calls Riot, saves, and emits a WebSocket event. The one request that waits is a search
+  for an unknown Riot ID: it waits for its job up to 5 s, then answers 202 with `Retry-After`.
 - `RiotClient` is called only from worker processors. Every Riot call goes through its Redis rate
   limiter; limits come from response headers, not constants. A 429 pauses the routing value (application
   limit) or just the endpoint (method/service limit) for `Retry-After`.
-- Processors turn Riot errors into job outcomes: `RiotRateLimitedError` (wait > 2 s) moves the job to
-  delayed for `retryInMs` instead of sleeping in a worker slot; `RiotSchemaError` is unrecoverable.
+- Processors wrap Riot work in `runRiotJob()` (`src/riot/riot-job.ts`): `RiotRateLimitedError` (wait > 2 s)
+  moves the job to delayed instead of sleeping in a worker slot; `RiotSchemaError` is unrecoverable.
 - Finished matches are immutable: stored forever, never re-fetched.
 - `RiotAccount` keeps `gameName`/`tagLine` next to `puuid`: PUUIDs are encrypted per API key and
   change when we move to a Production Key.

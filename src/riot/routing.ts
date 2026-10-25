@@ -18,7 +18,7 @@ export const PLATFORMS = [
   'vn2',
 ] as const;
 
-export const platformSchema = z.enum(PLATFORMS);
+export const platformSchema = z.enum(PLATFORMS).meta({ id: 'Platform' });
 
 export type Platform = z.infer<typeof platformSchema>;
 
