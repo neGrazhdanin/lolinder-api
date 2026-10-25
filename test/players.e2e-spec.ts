@@ -373,6 +373,31 @@ describe('players (e2e)', () => {
       expect(await prisma.rankSnapshot.count({ where: { puuid: puuid('zeus') } })).toBe(2);
     });
 
+    it('serves the LP history oldest first, per queue', async () => {
+      const solo = await app.inject({
+        method: 'GET',
+        url: `/players/${puuid('zeus')}/rank-history`,
+      });
+      const flex = await app.inject({
+        method: 'GET',
+        url: `/players/${puuid('zeus')}/rank-history?queue=flex`,
+      });
+
+      expect(solo.statusCode).toBe(200);
+      expect(
+        solo.json().items.map((point: { leaguePoints: number }) => point.leaguePoints),
+      ).toEqual([50, 71]);
+      expect(solo.json().items[0]).toEqual({
+        takenAt: expect.any(String),
+        tier: 'GOLD',
+        division: 'II',
+        leaguePoints: 50,
+        wins: 10,
+        losses: 8,
+      });
+      expect(flex.json()).toEqual({ items: [] });
+    });
+
     it('answers a refresh right after a sync from the database', async () => {
       const res = await refresh('zeus');
 
@@ -428,6 +453,18 @@ describe('players (e2e)', () => {
     it.each([
       ['an unknown player', `/players/${puuid('ghost')}`, 404, 'PLAYER_NOT_FOUND'],
       ['a malformed puuid', '/players/not-a-puuid', 400, 'VALIDATION_FAILED'],
+      [
+        'LP history of an unknown player',
+        `/players/${puuid('ghost')}/rank-history`,
+        404,
+        'PLAYER_NOT_FOUND',
+      ],
+      [
+        'an unknown queue',
+        `/players/${puuid('zeus')}/rank-history?queue=aram`,
+        400,
+        'VALIDATION_FAILED',
+      ],
     ])('rejects %s', async (_, url, status, code) => {
       const res = await app.inject({ method: 'GET', url });
       expect(res.statusCode).toBe(status);
@@ -495,6 +532,9 @@ describe('players (e2e)', () => {
     expect(JSON.stringify(searchOperation.parameters)).not.toContain('\\p{');
     expect(jsonSchema(doc.paths['/players/{puuid}'].get, '200')).toEqual({
       $ref: '#/components/schemas/PlayerProfile',
+    });
+    expect(jsonSchema(doc.paths['/players/{puuid}/rank-history'].get, '200')).toEqual({
+      $ref: '#/components/schemas/RankHistory',
     });
     expect(jsonSchema(doc.paths['/players/{puuid}/refresh'].post, '200')).toEqual({
       $ref: '#/components/schemas/PlayerProfile',

@@ -100,6 +100,21 @@ export type PlayerProfile = z.infer<typeof playerProfileSchema>;
 
 export const playerParamsSchema = z.object({ puuid: puuidSchema });
 
+export const rankHistoryQuerySchema = z.object({
+  queue: playerRankSchema.shape.queue.default('solo'),
+});
+
+export const rankHistoryPointSchema = playerRankSchema
+  .omit({ queue: true })
+  .extend({ takenAt: z.iso.datetime() })
+  .meta({ id: 'RankHistoryPoint' });
+
+export const rankHistorySchema = z
+  .object({ items: z.array(rankHistoryPointSchema) })
+  .meta({ id: 'RankHistory' });
+
+export type RankHistory = z.infer<typeof rankHistorySchema>;
+
 export const playerSearchPendingSchema = z
   .object({ status: z.literal('pending') })
   .meta({ id: 'PlayerSearchPending' });

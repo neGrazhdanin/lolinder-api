@@ -4,6 +4,7 @@ import type { Job, Queue } from 'bullmq';
 import { z } from 'zod';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-code.js';
+import { RankedQueue } from '../generated/prisma/enums.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { CacheService } from '../infra/redis/cache.service.js';
 import { riotIdKey } from '../riot/riot-id.js';
@@ -14,6 +15,7 @@ import {
   notFoundCacheKey,
   PLAYERS_QUEUE,
   PlayerJob,
+  RANK_HISTORY_POINTS,
   REFRESH_COOLDOWN_MS,
   type ResolveRiotIdData,
   type ResolveRiotIdResult,
@@ -23,8 +25,10 @@ import {
 import type {
   Player,
   PlayerProfile,
+  PlayerRank,
   PlayerSearchPending,
   PlayerSearchQuery,
+  RankHistory,
 } from './players.schemas.js';
 
 const SEARCH_WAIT_MS = 5000;
@@ -55,6 +59,25 @@ export class PlayersService {
         });
     }
     return toPlayerProfile(account, syncing);
+  }
+
+  async rankHistory(puuid: string, queue: PlayerRank['queue']): Promise<RankHistory> {
+    await this.findAccount(puuid);
+    const snapshots = await this.prisma.rankSnapshot.findMany({
+      where: { puuid, queue: queue === 'solo' ? RankedQueue.SOLO : RankedQueue.FLEX },
+      orderBy: { takenAt: 'desc' },
+      take: RANK_HISTORY_POINTS,
+    });
+    return {
+      items: snapshots.reverse().map((snapshot) => ({
+        takenAt: snapshot.takenAt.toISOString(),
+        tier: snapshot.tier,
+        division: snapshot.division,
+        leaguePoints: snapshot.leaguePoints,
+        wins: snapshot.wins,
+        losses: snapshot.losses,
+      })),
+    };
   }
 
   async refresh(puuid: string): Promise<PlayerProfile> {

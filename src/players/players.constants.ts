@@ -32,6 +32,8 @@ export const FRESH_FOR_MS = 10 * 60 * 1000;
 // "Refresh" clicks within this window after a sync are answered from the database.
 export const REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
 export const TOP_MASTERIES = 10;
+// A snapshot is written only when the rank changes, so 100 points cover months of play.
+export const RANK_HISTORY_POINTS = 100;
 // After a failed sync, page views wait this long before queueing another; "Refresh" does not wait.
 export const FAILED_SYNC_BACKOFF_MS = 5 * 60 * 1000;
 
