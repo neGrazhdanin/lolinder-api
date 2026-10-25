@@ -5,11 +5,23 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import type { Env } from '../config/env.js';
 import { RiotClient } from './riot.client.js';
 import { RiotApiError } from './riot-api.error.js';
+import type { RiotRateLimiter } from './riot-rate-limiter.js';
 
 const API_KEY = 'RGAPI-test'; // secrets-scan:allow
 
-function createClient(apiKey = API_KEY): RiotClient {
-  return new RiotClient({ get: () => apiKey } as unknown as ConfigService<Env, true>);
+function createLimiter() {
+  return {
+    acquire: vi.fn(async () => {}),
+    recordLimits: vi.fn(async () => {}),
+    pause: vi.fn(async () => {}),
+  };
+}
+
+function createClient(apiKey = API_KEY, limiter = createLimiter()): RiotClient {
+  return new RiotClient(
+    { get: () => apiKey } as unknown as ConfigService<Env, true>,
+    limiter as unknown as RiotRateLimiter,
+  );
 }
 
 function riot(host: string) {
@@ -149,6 +161,41 @@ describe('RiotClient', () => {
       retryAfterSeconds: 7,
     });
     expect(JSON.stringify(error) + String(error)).not.toContain(API_KEY);
+  });
+
+  it('goes through the limiter and stores the limits Riot reports', async () => {
+    const limiter = createLimiter();
+    const headers = { 'X-App-Rate-Limit': '20:1,100:120', 'X-Method-Rate-Limit': '2000:60' };
+    riot('europe').get('/lol/match/v5/matches/by-puuid/puuid-1/ids').reply(200, [], headers);
+
+    await createClient(API_KEY, limiter).getMatchIds('euw1', 'puuid-1');
+
+    expect(limiter.acquire).toHaveBeenCalledWith('europe', 'match-v5.getIdsByPuuid');
+    expect(limiter.acquire.mock.invocationCallOrder[0]).toBeLessThan(
+      limiter.recordLimits.mock.invocationCallOrder[0] ?? 0,
+    );
+    const [, , recorded] = limiter.recordLimits.mock.calls[0] as unknown as [
+      string,
+      string,
+      Headers,
+    ];
+    expect(recorded.get('x-app-rate-limit')).toBe('20:1,100:120');
+  });
+
+  it.each([
+    ['application', 'application'],
+    ['method', 'method'],
+    ['service', 'method'],
+  ] as const)('pauses the %s scope on a 429 of type %s', async (type, scope) => {
+    const limiter = createLimiter();
+    riot('kr')
+      .get('/lol/league/v4/entries/by-puuid/puuid-1')
+      .reply(429, {}, { 'Retry-After': '3', 'X-Rate-Limit-Type': type });
+
+    await expect(createClient(API_KEY, limiter).getLeagueEntries('kr', 'puuid-1')).rejects.toThrow(
+      RiotApiError,
+    );
+    expect(limiter.pause).toHaveBeenCalledWith('kr', 'league-v4.getEntriesByPuuid', scope, 3);
   });
 
   it('logs a key hint when Riot rejects the key', async () => {

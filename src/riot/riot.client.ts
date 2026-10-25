@@ -20,6 +20,7 @@ import {
   summonerSchema,
 } from './riot.schemas.js';
 import { RiotApiError } from './riot-api.error.js';
+import { RiotRateLimiter } from './riot-rate-limiter.js';
 import { accountRegionOf, matchRegionOf, type Platform } from './routing.js';
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -41,7 +42,10 @@ export class RiotClient {
   private readonly logger = new Logger(RiotClient.name);
   private readonly apiKey: string;
 
-  constructor(config: ConfigService<Env, true>) {
+  constructor(
+    config: ConfigService<Env, true>,
+    private readonly limiter: RiotRateLimiter,
+  ) {
     const apiKey = config.get('RIOT_API_KEY', { infer: true });
     if (!apiKey) {
       throw new Error('RIOT_API_KEY is not set');
@@ -181,17 +185,25 @@ export class RiotClient {
       }
     }
 
+    await this.limiter.acquire(host, endpoint);
     const response = await fetch(url, {
       headers: { 'X-Riot-Token': this.apiKey },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
+    await this.limiter.recordLimits(host, endpoint, response.headers);
 
     if (!response.ok) {
       await response.body?.cancel();
       if (response.status === 404) {
         return null;
       }
-      throw this.toError(endpoint, response);
+      const error = this.toError(endpoint, response);
+      if (error.status === 429) {
+        const scope =
+          response.headers.get('x-rate-limit-type') === 'application' ? 'application' : 'method';
+        await this.limiter.pause(host, endpoint, scope, error.retryAfterSeconds);
+      }
+      throw error;
     }
 
     const parsed = schema.safeParse(await response.json());
