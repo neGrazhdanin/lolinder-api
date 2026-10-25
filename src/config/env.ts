@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 export const envSchema = z
   .object({
-    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-    HOST: z.string().default('0.0.0.0'),
+    // Safe defaults: a forgotten variable must not expose Swagger or the LAN interface.
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('production'),
+    HOST: z.string().default('localhost'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
@@ -21,7 +22,22 @@ export const envSchema = z
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }),
     // Optional here because only the worker talks to Riot; RiotClient fails fast without it.
-    RIOT_API_KEY: z.string().startsWith('RGAPI-').optional(),
+    RIOT_API_KEY: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().startsWith('RGAPI-').optional(),
+    ),
+    // Hop count or comma-separated proxy IPs/CIDRs. `true` is not accepted: it trusts a spoofed X-Forwarded-For.
+    TRUST_PROXY: z
+      .string()
+      .regex(/^(\d+|[\w.:/]+(,[\w.:/]+)*)$/)
+      .refine((value) => value !== 'true')
+      .optional()
+      .transform((value) => {
+        if (value === undefined) {
+          return false;
+        }
+        return /^\d+$/.test(value) ? Number(value) : value.split(',');
+      }),
   })
   .transform((env) => ({
     ...env,

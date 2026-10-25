@@ -1,15 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { z } from 'zod';
+import type { z } from 'zod';
 import type { Env } from '../config/env.js';
+import { RiotApiError, RiotSchemaError } from './riot.errors.js';
 import {
   type ActiveGameDto,
   accountSchema,
   activeGameSchema,
   type ChampionMasteryDto,
-  championMasterySchema,
+  championMasteriesSchema,
   type LeagueEntryDto,
-  leagueEntrySchema,
+  leagueEntriesSchema,
   type MatchDto,
   type MatchTimelineDto,
   matchIdsSchema,
@@ -19,9 +20,8 @@ import {
   type SummonerDto,
   summonerSchema,
 } from './riot.schemas.js';
-import { RiotApiError } from './riot-api.error.js';
 import { RiotRateLimiter } from './riot-rate-limiter.js';
-import { accountRegionOf, matchRegionOf, type Platform } from './routing.js';
+import { accountRegionOf, isRoutingValue, matchRegionOf, type Platform } from './routing.js';
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -40,7 +40,8 @@ type Query = Record<string, string | number | undefined>;
 @Injectable()
 export class RiotClient {
   private readonly logger = new Logger(RiotClient.name);
-  private readonly apiKey: string;
+  // ES private field: TypeScript `private` would still show the key in util.inspect output.
+  readonly #apiKey: string;
 
   constructor(
     config: ConfigService<Env, true>,
@@ -50,10 +51,10 @@ export class RiotClient {
     if (!apiKey) {
       throw new Error('RIOT_API_KEY is not set');
     }
-    this.apiKey = apiKey;
+    this.#apiKey = apiKey;
   }
 
-  getAccountByRiotId(
+  async getAccountByRiotId(
     platform: Platform,
     gameName: string,
     tagLine: string,
@@ -66,7 +67,7 @@ export class RiotClient {
     );
   }
 
-  getAccountByPuuid(platform: Platform, puuid: string): Promise<RiotAccountDto | null> {
+  async getAccountByPuuid(platform: Platform, puuid: string): Promise<RiotAccountDto | null> {
     return this.request(
       accountRegionOf(platform),
       'account-v1.getByPuuid',
@@ -75,7 +76,7 @@ export class RiotClient {
     );
   }
 
-  getSummonerByPuuid(platform: Platform, puuid: string): Promise<SummonerDto | null> {
+  async getSummonerByPuuid(platform: Platform, puuid: string): Promise<SummonerDto | null> {
     return this.request(
       platform,
       'summoner-v4.getByPuuid',
@@ -89,7 +90,7 @@ export class RiotClient {
       platform,
       'league-v4.getEntriesByPuuid',
       `/lol/league/v4/entries/by-puuid/${segment(puuid)}`,
-      z.array(leagueEntrySchema),
+      leagueEntriesSchema,
     );
     return entries ?? [];
   }
@@ -107,13 +108,13 @@ export class RiotClient {
             platform,
             'champion-mastery-v4.getAllByPuuid',
             path,
-            z.array(championMasterySchema),
+            championMasteriesSchema,
           )
         : await this.request(
             platform,
             'champion-mastery-v4.getTopByPuuid',
             `${path}/top`,
-            z.array(championMasterySchema),
+            championMasteriesSchema,
             { count },
           );
     return masteries ?? [];
@@ -142,7 +143,7 @@ export class RiotClient {
     return ids ?? [];
   }
 
-  getMatch(platform: Platform, matchId: string): Promise<MatchDto | null> {
+  async getMatch(platform: Platform, matchId: string): Promise<MatchDto | null> {
     return this.request(
       matchRegionOf(platform),
       'match-v5.getMatch',
@@ -151,7 +152,7 @@ export class RiotClient {
     );
   }
 
-  getMatchTimeline(platform: Platform, matchId: string): Promise<MatchTimelineDto | null> {
+  async getMatchTimeline(platform: Platform, matchId: string): Promise<MatchTimelineDto | null> {
     return this.request(
       matchRegionOf(platform),
       'match-v5.getTimeline',
@@ -161,7 +162,7 @@ export class RiotClient {
   }
 
   /** `null` when the player is not in a game or it is still in the loading screen. */
-  getActiveGame(platform: Platform, puuid: string): Promise<ActiveGameDto | null> {
+  async getActiveGame(platform: Platform, puuid: string): Promise<ActiveGameDto | null> {
     return this.request(
       platform,
       'spectator-v5.getActiveGame',
@@ -170,7 +171,6 @@ export class RiotClient {
     );
   }
 
-  /** Resolves to `null` on 404; any other non-2xx status throws `RiotApiError`. */
   private async request<S extends z.ZodType>(
     host: string,
     endpoint: string,
@@ -178,6 +178,10 @@ export class RiotClient {
     schema: S,
     query: Query = {},
   ): Promise<z.output<S> | null> {
+    // Job payloads are untyped JSON, and a forged host would receive the API key.
+    if (!isRoutingValue(host)) {
+      throw new Error(`Unknown Riot routing value: ${host}`);
+    }
     const url = new URL(path, `https://${host}.api.riotgames.com`);
     for (const [name, value] of Object.entries(query)) {
       if (value !== undefined) {
@@ -187,13 +191,15 @@ export class RiotClient {
 
     await this.limiter.acquire(host, endpoint);
     const response = await fetch(url, {
-      headers: { 'X-Riot-Token': this.apiKey },
+      headers: { 'X-Riot-Token': this.#apiKey },
+      // fetch forwards custom headers like X-Riot-Token to a redirect target on another origin.
+      redirect: 'error',
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
+    const body: unknown = response.ok ? await response.json() : await response.body?.cancel();
     await this.limiter.recordLimits(host, endpoint, response.headers);
 
     if (!response.ok) {
-      await response.body?.cancel();
       if (response.status === 404) {
         return null;
       }
@@ -206,11 +212,9 @@ export class RiotClient {
       throw error;
     }
 
-    const parsed = schema.safeParse(await response.json());
+    const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      throw new Error(`Riot ${endpoint} response does not match the schema`, {
-        cause: parsed.error,
-      });
+      throw new RiotSchemaError(endpoint, parsed.error);
     }
     return parsed.data;
   }
@@ -231,7 +235,11 @@ export class RiotClient {
   }
 }
 
+// encodeURIComponent leaves `.` and `..` as is, and URL resolution would turn them into another path.
 function segment(value: string): string {
+  if (value === '' || value === '.' || value === '..') {
+    throw new Error(`Invalid Riot path segment: "${value}"`);
+  }
   return encodeURIComponent(value);
 }
 

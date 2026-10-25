@@ -4,7 +4,7 @@ import nock from 'nock';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../config/env.js';
 import { RiotClient } from './riot.client.js';
-import { RiotApiError } from './riot-api.error.js';
+import { RiotApiError, RiotSchemaError } from './riot.errors.js';
 import type { RiotRateLimiter } from './riot-rate-limiter.js';
 
 const API_KEY = 'RGAPI-test'; // secrets-scan:allow
@@ -163,23 +163,46 @@ describe('RiotClient', () => {
     expect(JSON.stringify(error) + String(error)).not.toContain(API_KEY);
   });
 
-  it('goes through the limiter and stores the limits Riot reports', async () => {
+  it('sends the request only after the limiter lets it through', async () => {
+    const limiter = createLimiter();
+    const { promise: slot, resolve: openSlot } = Promise.withResolvers<void>();
+    limiter.acquire.mockReturnValueOnce(slot);
+    const scope = riot('europe').get('/lol/match/v5/matches/by-puuid/puuid-1/ids').reply(200, []);
+
+    const ids = createClient(API_KEY, limiter).getMatchIds('euw1', 'puuid-1');
+    await vi.waitFor(() => expect(limiter.acquire).toHaveBeenCalled());
+    expect(scope.isDone()).toBe(false);
+
+    openSlot();
+    expect(await ids).toEqual([]);
+    expect(limiter.acquire).toHaveBeenCalledWith('europe', 'match-v5.getIdsByPuuid');
+  });
+
+  it.each([200, 404, 429, 500])('records the limits Riot reports on a %i', async (status) => {
     const limiter = createLimiter();
     const headers = { 'X-App-Rate-Limit': '20:1,100:120', 'X-Method-Rate-Limit': '2000:60' };
-    riot('europe').get('/lol/match/v5/matches/by-puuid/puuid-1/ids').reply(200, [], headers);
+    riot('europe').get('/lol/match/v5/matches/by-puuid/puuid-1/ids').reply(status, [], headers);
 
-    await createClient(API_KEY, limiter).getMatchIds('euw1', 'puuid-1');
+    await createClient(API_KEY, limiter)
+      .getMatchIds('euw1', 'puuid-1')
+      .catch(() => {});
 
-    expect(limiter.acquire).toHaveBeenCalledWith('europe', 'match-v5.getIdsByPuuid');
-    expect(limiter.acquire.mock.invocationCallOrder[0]).toBeLessThan(
-      limiter.recordLimits.mock.invocationCallOrder[0] ?? 0,
-    );
     const [, , recorded] = limiter.recordLimits.mock.calls[0] as unknown as [
       string,
       string,
       Headers,
     ];
     expect(recorded.get('x-app-rate-limit')).toBe('20:1,100:120');
+  });
+
+  it.each([404, 500, 503])('does not pause on a %i', async (status) => {
+    const limiter = createLimiter();
+    riot('kr').get('/lol/league/v4/entries/by-puuid/puuid-1').reply(status);
+
+    await createClient(API_KEY, limiter)
+      .getLeagueEntries('kr', 'puuid-1')
+      .catch(() => {});
+    expect(limiter.pause).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -215,7 +238,38 @@ describe('RiotClient', () => {
       .reply(200, { puuid: 'puuid-1', summonerLevel: 'high' });
 
     await expect(createClient().getSummonerByPuuid('euw1', 'puuid-1')).rejects.toThrow(
-      /summoner-v4\.getByPuuid response does not match/,
+      RiotSchemaError,
     );
+  });
+
+  it('refuses a routing value outside the known platforms and regions', async () => {
+    const limiter = createLimiter();
+    const forged = 'evil.example#' as Parameters<RiotClient['getSummonerByPuuid']>[0];
+
+    await expect(
+      createClient(API_KEY, limiter).getSummonerByPuuid(forged, 'puuid-1'),
+    ).rejects.toThrow(/Unknown Riot routing value/);
+    expect(limiter.acquire).not.toHaveBeenCalled();
+  });
+
+  it.each(['', '.', '..'])('refuses the path segment "%s"', async (matchId) => {
+    await expect(createClient().getMatchTimeline('euw1', matchId)).rejects.toThrow(
+      /Invalid Riot path segment/,
+    );
+  });
+
+  it('does not follow redirects, so the key never reaches another host', async () => {
+    riot('euw1')
+      .get('/lol/summoner/v4/summoners/by-puuid/puuid-1')
+      .reply(302, undefined, { Location: 'https://evil.example/collect' });
+    const evil = nock('https://evil.example').get('/collect').reply(200, {});
+
+    await expect(createClient().getSummonerByPuuid('euw1', 'puuid-1')).rejects.toThrow();
+    expect(evil.isDone()).toBe(false);
+  });
+
+  it('keeps the key out of util.inspect output', async () => {
+    const { inspect } = await import('node:util');
+    expect(inspect(createClient(), { depth: 5 })).not.toContain(API_KEY);
   });
 });

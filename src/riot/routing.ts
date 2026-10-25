@@ -22,7 +22,15 @@ export const platformSchema = z.enum(PLATFORMS);
 
 export type Platform = z.infer<typeof platformSchema>;
 
-export type Region = 'americas' | 'asia' | 'europe' | 'sea';
+export const REGIONS = ['americas', 'asia', 'europe', 'sea'] as const;
+
+export type Region = (typeof REGIONS)[number];
+
+const ROUTING_VALUES: ReadonlySet<string> = new Set([...PLATFORMS, ...REGIONS]);
+
+export function isRoutingValue(value: string): value is Platform | Region {
+  return ROUTING_VALUES.has(value);
+}
 
 const MATCH_REGIONS: Record<Platform, Region> = {
   br1: 'americas',
@@ -42,7 +50,6 @@ const MATCH_REGIONS: Record<Platform, Region> = {
   vn2: 'sea',
 };
 
-/** Region that serves match-v5 for the platform. */
 export function matchRegionOf(platform: Platform): Region {
   return MATCH_REGIONS[platform];
 }

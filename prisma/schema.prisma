@@ -52,6 +52,8 @@ model RiotAccount {
   puuid         String    @id @db.VarChar(78)
   gameName      String    @map("game_name")
   tagLine       String    @map("tag_line")
+  /// Lowercased `gameName#tagLine`: Riot IDs are case-insensitive, and ILIKE cannot use a B-tree index.
+  riotIdKey     String    @map("riot_id_key")
   platform      String
   profileIconId Int?      @map("profile_icon_id")
   summonerLevel Int?      @map("summoner_level")
@@ -61,7 +63,7 @@ model RiotAccount {
 
   rankSnapshots RankSnapshot[]
 
-  @@index([gameName, tagLine])
+  @@index([riotIdKey])
   @@map("riot_accounts")
 }
 
@@ -126,8 +128,8 @@ model MatchParticipant {
   match Match @relation(fields: [matchId], references: [matchId], onDelete: Cascade)
 
   @@id([matchId, participantId])
-  @@index([puuid, startedAt(sort: Desc)])
-  @@index([puuid, queueId, startedAt(sort: Desc)])
+  @@index([puuid, startedAt(sort: Desc), matchId(sort: Desc)])
+  @@index([puuid, queueId, startedAt(sort: Desc), matchId(sort: Desc)])
   @@map("match_participants")
 }
 

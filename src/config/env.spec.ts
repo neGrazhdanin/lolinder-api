@@ -9,16 +9,21 @@ const required = {
 };
 
 describe('validateEnv', () => {
-  it('applies defaults when only required variables are set', () => {
+  it('applies safe defaults when only required variables are set', () => {
     expect(validateEnv(required)).toEqual({
       ...required,
-      NODE_ENV: 'development',
-      HOST: '0.0.0.0',
+      NODE_ENV: 'production',
+      HOST: 'localhost',
       PORT: 3000,
       LOG_LEVEL: 'info',
       CORS_ORIGINS: ['http://localhost:5173'],
-      SWAGGER_ENABLED: true,
+      SWAGGER_ENABLED: false,
+      TRUST_PROXY: false,
     });
+  });
+
+  it('enables Swagger outside production by default', () => {
+    expect(validateEnv({ ...required, NODE_ENV: 'development' }).SWAGGER_ENABLED).toBe(true);
   });
 
   it('splits CORS_ORIGINS and disables Swagger in production by default', () => {
@@ -57,5 +62,21 @@ describe('validateEnv', () => {
   it('accepts only Riot-issued API keys', () => {
     expect(validateEnv({ ...required, RIOT_API_KEY: RIOT_KEY }).RIOT_API_KEY).toBe(RIOT_KEY);
     expect(() => validateEnv({ ...required, RIOT_API_KEY: 'test' })).toThrow(/RIOT_API_KEY/);
+  });
+
+  it('treats an empty RIOT_API_KEY as unset', () => {
+    expect(validateEnv({ ...required, RIOT_API_KEY: '' }).RIOT_API_KEY).toBeUndefined();
+  });
+
+  it.each([
+    ['1', 1],
+    ['10.0.0.0/8', ['10.0.0.0/8']],
+    ['127.0.0.1,10.0.0.0/8', ['127.0.0.1', '10.0.0.0/8']],
+  ])('parses TRUST_PROXY=%s', (value, expected) => {
+    expect(validateEnv({ ...required, TRUST_PROXY: value }).TRUST_PROXY).toEqual(expected);
+  });
+
+  it.each(['true', '10.0.0.1, 10.0.0.2'])('rejects TRUST_PROXY=%s', (value) => {
+    expect(() => validateEnv({ ...required, TRUST_PROXY: value })).toThrow(/TRUST_PROXY/);
   });
 });

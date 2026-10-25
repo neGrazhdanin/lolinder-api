@@ -1,8 +1,9 @@
-import { BullModule, InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { type INestApplicationContext, Injectable } from '@nestjs/common';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { BullModule, getQueueToken, InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { type INestApplicationContext, Inject, Injectable } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Job, Queue } from 'bullmq';
-import type { Redis } from 'ioredis';
+import { Redis } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { CoreModule } from '../src/core/core.module.js';
@@ -10,6 +11,7 @@ import { InfraModule } from '../src/infra/infra.module.js';
 import { PrismaService } from '../src/infra/prisma/prisma.service.js';
 import { CacheService } from '../src/infra/redis/cache.service.js';
 import { REDIS } from '../src/infra/redis/redis.constants.js';
+import { riotIdKey } from '../src/riot/riot-id.js';
 
 const PROBE_QUEUE = 'infra-probe';
 
@@ -17,6 +19,28 @@ const PROBE_QUEUE = 'infra-probe';
 class ProbeProcessor extends WorkerHost {
   async process(job: Job<{ value: number }>): Promise<number> {
     return job.data.value * 2;
+  }
+}
+
+const SHUTDOWN_QUEUE = 'infra-shutdown-probe';
+
+@Processor(SHUTDOWN_QUEUE)
+class ShutdownProbeProcessor extends WorkerHost {
+  static readonly started = Promise.withResolvers<void>();
+  static readonly release = Promise.withResolvers<void>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(REDIS) private readonly redis: Redis,
+  ) {
+    super();
+  }
+
+  async process(): Promise<void> {
+    ShutdownProbeProcessor.started.resolve();
+    await ShutdownProbeProcessor.release.promise;
+    await this.prisma.$queryRaw`select 1`;
+    await this.redis.set('infra:shutdown-probe', 'finished');
   }
 }
 
@@ -43,7 +67,13 @@ describe('infra (e2e)', () => {
   it('reads and writes Postgres through PrismaService', async () => {
     const prisma = app.get(PrismaService);
     await prisma.riotAccount.create({
-      data: { puuid: 'infra-puuid', gameName: 'Faker', tagLine: 'KR1', platform: 'kr' },
+      data: {
+        puuid: 'infra-puuid',
+        gameName: 'Faker',
+        tagLine: 'KR1',
+        riotIdKey: riotIdKey('Faker', 'KR1'),
+        platform: 'kr',
+      },
     });
     const account = await prisma.riotAccount.findUnique({ where: { puuid: 'infra-puuid' } });
     expect(account).toMatchObject({ gameName: 'Faker', tagLine: 'KR1' });
@@ -96,5 +126,24 @@ describe('infra (e2e)', () => {
 
     await context.close();
     await expect.poll(() => redis.status).toBe('end');
+  });
+
+  it('lets an active job finish with Redis and Prisma before closing them', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [CoreModule, InfraModule, BullModule.registerQueue({ name: SHUTDOWN_QUEUE })],
+      providers: [ShutdownProbeProcessor],
+    }).compile();
+    const context = await moduleRef.init();
+    await context.get<Queue>(getQueueToken(SHUTDOWN_QUEUE)).add('probe', {});
+    await ShutdownProbeProcessor.started.promise;
+
+    const closing = context.close();
+    await sleep(100);
+    ShutdownProbeProcessor.release.resolve();
+    await closing;
+
+    const redis = new Redis(process.env.REDIS_URL ?? '');
+    expect(await redis.get('infra:shutdown-probe')).toBe('finished');
+    await redis.quit();
   });
 });

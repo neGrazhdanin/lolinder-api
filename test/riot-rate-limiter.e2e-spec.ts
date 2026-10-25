@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { RiotRateLimitedError } from '../src/riot/riot.errors.js';
 import { RiotRateLimiter } from '../src/riot/riot-rate-limiter.js';
 
 const connections: Redis[] = [];
@@ -113,5 +114,63 @@ describe('RiotRateLimiter (e2e)', () => {
     await limiter.acquire(host, endpoint);
 
     expect(performance.now() - startedAt).toBeGreaterThanOrEqual(1000);
+  });
+
+  it('blocks on the longer window too', async () => {
+    const limiter = createLimiter();
+    const host = `euw1-${randomUUID()}`;
+    await limiter.recordLimits(host, endpoint, limitHeaders('100:1,3:120'));
+
+    const waits = await acquireTimes(limiter, host, endpoint, 4);
+    expect(waits.slice(0, 3)).toEqual([0, 0, 0]);
+    expect(waits[3]).toBeGreaterThan(119_000);
+  });
+
+  it('ignores malformed and zero limits', async () => {
+    const limiter = createLimiter();
+    const host = `euw1-${randomUUID()}`;
+    await limiter.recordLimits(host, endpoint, limitHeaders('0:1', 'many'));
+
+    expect(await acquireTimes(limiter, host, endpoint, 20)).toEqual(Array(20).fill(0));
+    expect(await limiter.tryAcquire(host, endpoint)).toBeGreaterThan(0);
+  });
+
+  it('replaces stored limits when Riot reports new ones', async () => {
+    const limiter = createLimiter();
+    const host = `euw1-${randomUUID()}`;
+    await limiter.recordLimits(host, endpoint, limitHeaders('1:10'));
+    await limiter.recordLimits(host, endpoint, limitHeaders('2:10'));
+
+    expect(await acquireTimes(limiter, host, endpoint, 3)).toEqual([0, 0, expect.any(Number)]);
+    expect(await limiter.tryAcquire(host, endpoint)).toBeGreaterThan(9000);
+  });
+
+  it('pauses for one second when Retry-After is missing', async () => {
+    const limiter = createLimiter();
+    const host = `na1-${randomUUID()}`;
+    await limiter.pause(host, endpoint, 'application', undefined);
+
+    const wait = await limiter.tryAcquire(host, endpoint);
+    expect(wait).toBeGreaterThan(900);
+    expect(wait).toBeLessThanOrEqual(1000);
+  });
+
+  it('never shortens a pause that is already longer', async () => {
+    const limiter = createLimiter();
+    const host = `na1-${randomUUID()}`;
+    await limiter.pause(host, endpoint, 'application', 60);
+    await limiter.pause(host, endpoint, 'application', 1);
+
+    expect(await limiter.tryAcquire(host, endpoint)).toBeGreaterThan(59_000);
+  });
+
+  it('hands long waits back to the caller instead of sleeping', async () => {
+    const limiter = createLimiter();
+    const host = `na1-${randomUUID()}`;
+    await limiter.pause(host, endpoint, 'method', 30);
+
+    const error = await limiter.acquire(host, endpoint).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RiotRateLimitedError);
+    expect((error as RiotRateLimitedError).retryInMs).toBeGreaterThan(29_000);
   });
 });
