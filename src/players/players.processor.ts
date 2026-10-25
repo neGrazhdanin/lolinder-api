@@ -12,6 +12,7 @@ import { PlayerSyncService } from './player-sync.service.js';
 import {
   NOT_FOUND_TTL_SECONDS,
   notFoundCacheKey,
+  PLAYERS_CONCURRENCY,
   PLAYERS_QUEUE,
   PlayerJob,
   type ResolveRiotIdData,
@@ -20,7 +21,7 @@ import {
   SyncPriority,
 } from './players.constants.js';
 
-@Processor(PLAYERS_QUEUE)
+@Processor(PLAYERS_QUEUE, { concurrency: PLAYERS_CONCURRENCY })
 export class PlayersProcessor extends WorkerHost {
   constructor(
     private readonly riot: RiotClient,

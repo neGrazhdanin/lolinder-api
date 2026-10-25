@@ -435,6 +435,46 @@ describe('players (e2e)', () => {
     });
   });
 
+  it('syncs several players at once', async () => {
+    const seeds = ['ruler', 'peyz', 'gumayusi'];
+    for (const seed of seeds) {
+      await prisma.riotAccount.create({
+        data: {
+          puuid: puuid(seed),
+          gameName: seed,
+          tagLine: 'KR1',
+          riotIdKey: `${seed}#kr1`,
+          platform: 'kr',
+        },
+      });
+    }
+    // Each sync holds its slot for 500 ms on summoner-v4; one at a time would take at least 1.5 s.
+    for (const seed of seeds) {
+      riot('asia')
+        .get(`/riot/account/v1/accounts/by-puuid/${puuid(seed)}`)
+        .reply(200, { puuid: puuid(seed), gameName: seed, tagLine: 'KR1' });
+      riot('kr')
+        .get(`/lol/summoner/v4/summoners/by-puuid/${puuid(seed)}`)
+        .delay(500)
+        .reply(200, { puuid: puuid(seed), profileIconId: 1, revisionDate: 1, summonerLevel: 30 });
+      riot('kr')
+        .get(`/lol/league/v4/entries/by-puuid/${puuid(seed)}`)
+        .reply(200, []);
+      riot('kr')
+        .get(`/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid(seed)}/top`)
+        .query({ count: '10' })
+        .reply(200, []);
+    }
+
+    const startedAt = performance.now();
+    await Promise.all(seeds.map((seed) => refresh(seed)));
+    for (const seed of seeds) {
+      await expect.poll(() => syncStatus(seed), { interval: 50 }).toBe('fresh');
+    }
+
+    expect(performance.now() - startedAt).toBeLessThan(1400);
+  });
+
   it('documents players for the generated client', async () => {
     const doc = (await app.inject({ method: 'GET', url: '/docs-json' })).json();
     const searchOperation = doc.paths['/players/search'].get;

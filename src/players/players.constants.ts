@@ -2,6 +2,10 @@ import type { Platform } from '../riot/routing.js';
 
 export const PLAYERS_QUEUE = 'players';
 
+// Jobs mostly wait on Riot over the network. Running several at once cannot overspend the Riot budget:
+// the limiter is shared through Redis, and a job that would wait long is moved to delayed.
+export const PLAYERS_CONCURRENCY = 10;
+
 export const PlayerJob = {
   RESOLVE_RIOT_ID: 'resolve-riot-id',
   SYNC: 'sync-player',
