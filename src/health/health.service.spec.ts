@@ -39,8 +39,27 @@ describe('HealthService', () => {
       ping: () => new Promise(() => {}),
     });
 
-    const result = service.check();
-    await vi.advanceTimersByTimeAsync(1000);
+    let settled = false;
+    const result = service.check().finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
     expect(await result).toEqual({ postgres: 'up', redis: 'down' });
+  });
+
+  it('reuses the result for two seconds', async () => {
+    vi.useFakeTimers();
+    const ping = vi.fn(async () => 'PONG');
+    const service = createService({ queryRaw: async () => [], ping });
+
+    await service.check();
+    await service.check();
+    expect(ping).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(2000);
+    await service.check();
+    expect(ping).toHaveBeenCalledTimes(2);
   });
 });

@@ -34,6 +34,8 @@ export const leagueEntrySchema = z.object({
   losses: z.number().int(),
 });
 
+export const leagueEntriesSchema = z.array(leagueEntrySchema);
+
 export const championMasterySchema = z.object({
   puuid: z.string(),
   championId: z.number().int(),
@@ -41,6 +43,8 @@ export const championMasterySchema = z.object({
   championPoints: z.number().int(),
   lastPlayTime: z.number().int(),
 });
+
+export const championMasteriesSchema = z.array(championMasterySchema);
 
 export const matchIdsSchema = z.array(z.string());
 

@@ -8,6 +8,8 @@ export type HealthChecks = Record<'postgres' | 'redis', DependencyStatus>;
 
 // Both clients queue commands while reconnecting, so a dead dependency hangs instead of failing.
 const PROBE_TIMEOUT_MS = 1000;
+// /health is public and unthrottled; reusing the result keeps it from hitting the database on every call.
+const RESULT_TTL_MS = 2000;
 
 @Injectable()
 export class HealthService {
@@ -16,7 +18,17 @@ export class HealthService {
     @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
-  async check(): Promise<HealthChecks> {
+  private cached?: { expiresAt: number; checks: Promise<HealthChecks> };
+
+  check(): Promise<HealthChecks> {
+    const now = Date.now();
+    if (!this.cached || this.cached.expiresAt <= now) {
+      this.cached = { expiresAt: now + RESULT_TTL_MS, checks: this.probeAll() };
+    }
+    return this.cached.checks;
+  }
+
+  private async probeAll(): Promise<HealthChecks> {
     const [postgres, redis] = await Promise.all([
       probe(() => this.prisma.$queryRaw`select 1`),
       probe(() => this.redis.ping()),
