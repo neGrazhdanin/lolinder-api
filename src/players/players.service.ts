@@ -4,11 +4,10 @@ import type { Job, Queue } from 'bullmq';
 import { z } from 'zod';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-code.js';
-import type { RiotAccount } from '../generated/prisma/client.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { CacheService } from '../infra/redis/cache.service.js';
 import { riotIdKey } from '../riot/riot-id.js';
-import { platformSchema } from '../riot/routing.js';
+import { toPlayer } from './player.mapper.js';
 import { PlayerJobEvents } from './player-job-events.js';
 import {
   notFoundCacheKey,
@@ -93,16 +92,4 @@ export class PlayersService {
 
 function playerNotFound(): AppException {
   return new AppException(ErrorCode.PLAYER_NOT_FOUND, HttpStatus.NOT_FOUND);
-}
-
-function toPlayer(account: RiotAccount): Player {
-  return {
-    puuid: account.puuid,
-    gameName: account.gameName,
-    tagLine: account.tagLine,
-    platform: platformSchema.parse(account.platform),
-    profileIconId: account.profileIconId,
-    summonerLevel: account.summonerLevel,
-    lastSyncedAt: account.lastSyncedAt?.toISOString() ?? null,
-  };
 }
