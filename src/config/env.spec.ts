@@ -18,7 +18,6 @@ describe('validateEnv', () => {
       LOG_LEVEL: 'info',
       CORS_ORIGINS: ['http://localhost:5173'],
       SWAGGER_ENABLED: false,
-      TRUST_PROXY: false,
     });
   });
 
@@ -64,19 +63,33 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...required, RIOT_API_KEY: 'test' })).toThrow(/RIOT_API_KEY/);
   });
 
-  it('treats an empty RIOT_API_KEY as unset', () => {
-    expect(validateEnv({ ...required, RIOT_API_KEY: '' }).RIOT_API_KEY).toBeUndefined();
+  it.each(['RIOT_API_KEY', 'TRUST_PROXY'])('treats an empty %s as unset', (name) => {
+    expect(validateEnv({ ...required, [name]: '' })[name as 'RIOT_API_KEY']).toBeUndefined();
   });
 
   it.each([
-    ['1', 1],
     ['10.0.0.0/8', ['10.0.0.0/8']],
     ['127.0.0.1,10.0.0.0/8', ['127.0.0.1', '10.0.0.0/8']],
+    ['loopback', ['loopback']],
   ])('parses TRUST_PROXY=%s', (value, expected) => {
     expect(validateEnv({ ...required, TRUST_PROXY: value }).TRUST_PROXY).toEqual(expected);
   });
 
-  it.each(['true', '10.0.0.1, 10.0.0.2'])('rejects TRUST_PROXY=%s', (value) => {
+  it.each(['true', 'false', '1', '10.0.0.1, 10.0.0.2'])('rejects TRUST_PROXY=%s', (value) => {
     expect(() => validateEnv({ ...required, TRUST_PROXY: value })).toThrow(/TRUST_PROXY/);
   });
+
+  // ConfigModule writes validated primitives back into process.env as strings, and main.ts parses it again.
+  it.each([{}, { TRUST_PROXY: '10.0.0.0/8', RIOT_API_KEY: RIOT_KEY, NODE_ENV: 'development' }])(
+    'parses its own written-back output to the same result (%o)',
+    (extra) => {
+      const env = validateEnv({ ...required, ...extra });
+      const writtenBack = Object.fromEntries(
+        Object.entries(env)
+          .filter(([, value]) => ['string', 'boolean', 'number'].includes(typeof value))
+          .map(([key, value]) => [key, String(value)]),
+      );
+      expect(validateEnv({ ...required, ...extra, ...writtenBack })).toEqual(env);
+    },
+  );
 });

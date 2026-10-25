@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Injectable, Post } from '@nestjs/common';
-import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/bootstrap/configure-app.js';
+import { createFastifyAdapter } from '../src/bootstrap/fastify-adapter.js';
 import { ErrorCode } from '../src/common/errors/error-code.js';
 
 @Injectable()
@@ -42,7 +43,7 @@ describe('app (e2e)', () => {
       providers: [ProbeService],
     }).compile();
 
-    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app = moduleRef.createNestApplication<NestFastifyApplication>(createFastifyAdapter());
     await configureApp(app);
     await app.init();
     await app.getHttpAdapter().getInstance().ready();

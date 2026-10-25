@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+// `KEY=` in .env yields an empty string; treat it like a missing variable.
+const optional = <S extends z.ZodType>(schema: S) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 export const envSchema = z
   .object({
     // Safe defaults: a forgotten variable must not expose Swagger or the LAN interface.
@@ -22,22 +26,18 @@ export const envSchema = z
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }),
     // Optional here because only the worker talks to Riot; RiotClient fails fast without it.
-    RIOT_API_KEY: z.preprocess(
-      (value) => (value === '' ? undefined : value),
-      z.string().startsWith('RGAPI-').optional(),
+    RIOT_API_KEY: optional(z.string().startsWith('RGAPI-')),
+    // Comma-separated proxy IPs/CIDRs (or proxy-addr names like `loopback`). `true` and hop counts
+    // are not accepted: both let a client that reaches the app directly spoof X-Forwarded-For.
+    // The output stays an array or undefined: ConfigModule writes primitives back into process.env
+    // as strings, and main.ts parses process.env again.
+    TRUST_PROXY: optional(
+      z
+        .string()
+        .regex(/^[\w.:/]+(,[\w.:/]+)*$/)
+        .refine((value) => !['true', 'false'].includes(value) && !/^\d+$/.test(value))
+        .transform((value) => value.split(',')),
     ),
-    // Hop count or comma-separated proxy IPs/CIDRs. `true` is not accepted: it trusts a spoofed X-Forwarded-For.
-    TRUST_PROXY: z
-      .string()
-      .regex(/^(\d+|[\w.:/]+(,[\w.:/]+)*)$/)
-      .refine((value) => value !== 'true')
-      .optional()
-      .transform((value) => {
-        if (value === undefined) {
-          return false;
-        }
-        return /^\d+$/.test(value) ? Number(value) : value.split(',');
-      }),
   })
   .transform((env) => ({
     ...env,
