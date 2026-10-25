@@ -54,6 +54,8 @@ the client), and commit the migration; never edit an applied migration.
   Keep value imports for anything injected through a constructor.
 - Fastify listens on `localhost` by default; containers need `HOST=0.0.0.0`.
 - Express middleware does not work here; use `@fastify/*` plugins.
+- Riot response schemas keep open enums (queue types, tiers) as strings: Riot adds event modes such as
+  `JADE_RANKED_SOLO_5x5` with tier `WOOD`, and a strict enum fails the whole response. Narrow when mapping.
 - Gateways need `@UseFilters(HttpErrorFilter)` and `@SkipThrottle()`: `APP_FILTER` does not reach socket
   handlers, while the global `ThrottlerGuard` does and puts every socket into one shared bucket.
 - `prisma` on npm tags an 8.0 release candidate as `latest`; the version is pinned to 7.x in `package.json`.

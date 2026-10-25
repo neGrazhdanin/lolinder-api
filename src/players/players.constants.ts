@@ -2,9 +2,38 @@ import type { Platform } from '../riot/routing.js';
 
 export const PLAYERS_QUEUE = 'players';
 
+// Jobs mostly wait on Riot over the network. Running several at once cannot overspend the Riot budget:
+// the limiter is shared through Redis, and a job that would wait long is moved to delayed.
+export const PLAYERS_CONCURRENCY = 10;
+
 export const PlayerJob = {
   RESOLVE_RIOT_ID: 'resolve-riot-id',
+  SYNC: 'sync-player',
 } as const;
+
+export interface SyncPlayerData {
+  puuid: string;
+}
+
+// BullMQ runs lower numbers first; unprioritized jobs such as Riot ID lookups run before both.
+export const SyncPriority = {
+  USER: 1,
+  BACKGROUND: 10,
+} as const;
+
+export type SyncPriority = (typeof SyncPriority)[keyof typeof SyncPriority];
+
+export function syncJobId(puuid: string): string {
+  return `sync-${puuid}`;
+}
+
+// Newer data counts as fresh: the profile shows it without queueing a sync.
+export const FRESH_FOR_MS = 10 * 60 * 1000;
+// "Refresh" clicks within this window after a sync are answered from the database.
+export const REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
+export const TOP_MASTERIES = 10;
+// After a failed sync, page views wait this long before queueing another; "Refresh" does not wait.
+export const FAILED_SYNC_BACKOFF_MS = 5 * 60 * 1000;
 
 export interface ResolveRiotIdData {
   platform: Platform;

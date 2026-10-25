@@ -1,34 +1,48 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { type Job, UnrecoverableError } from 'bullmq';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { CacheService } from '../infra/redis/cache.service.js';
+import { RealtimeEmitter } from '../realtime/realtime.emitter.js';
 import { RiotClient } from '../riot/riot.client.js';
 import { riotIdKey } from '../riot/riot-id.js';
 import { runRiotJob } from '../riot/riot-job.js';
 import { platformSchema } from '../riot/routing.js';
+import { PlayerSyncQueue } from './player-sync.queue.js';
+import { PlayerSyncService } from './player-sync.service.js';
 import {
   NOT_FOUND_TTL_SECONDS,
   notFoundCacheKey,
+  PLAYERS_CONCURRENCY,
   PLAYERS_QUEUE,
   PlayerJob,
   type ResolveRiotIdData,
   type ResolveRiotIdResult,
+  type SyncPlayerData,
+  SyncPriority,
 } from './players.constants.js';
 
-@Processor(PLAYERS_QUEUE)
+@Processor(PLAYERS_QUEUE, { concurrency: PLAYERS_CONCURRENCY })
 export class PlayersProcessor extends WorkerHost {
   constructor(
     private readonly riot: RiotClient,
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly playerSync: PlayerSyncService,
+    private readonly syncQueue: PlayerSyncQueue,
+    private readonly realtime: RealtimeEmitter,
   ) {
     super();
   }
 
-  async process(job: Job, token?: string): Promise<ResolveRiotIdResult> {
+  async process(job: Job, token?: string): Promise<ResolveRiotIdResult | undefined> {
     switch (job.name) {
       case PlayerJob.RESOLVE_RIOT_ID:
         return runRiotJob(job, token, () => this.resolveRiotId(job.data as ResolveRiotIdData));
+      case PlayerJob.SYNC:
+        await runRiotJob(job, token, () =>
+          this.playerSync.sync((job.data as SyncPlayerData).puuid),
+        );
+        return undefined;
       default:
         throw new UnrecoverableError(`Unknown ${PLAYERS_QUEUE} job: ${job.name}`);
     }
@@ -62,7 +76,17 @@ export class PlayersProcessor extends WorkerHost {
       create: { puuid: account.puuid, ...fields },
       update: fields,
     });
+    // The searcher opens the profile next; ranks and masteries start loading right away.
+    await this.syncQueue.enqueue(account.puuid, SyncPriority.USER);
     return { puuid: account.puuid };
+  }
+
+  // Clients show "syncing" until `player:updated`; a sync that gave up must still end that state.
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job): Promise<void> {
+    if (job.name === PlayerJob.SYNC && (await job.isFailed())) {
+      this.realtime.playerUpdated({ puuid: (job.data as SyncPlayerData).puuid });
+    }
   }
 
   // A stored account that still holds this Riot ID has renamed since: fetch its current name, so the

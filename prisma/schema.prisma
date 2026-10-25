@@ -57,6 +57,9 @@ model RiotAccount {
   platform      String
   profileIconId Int?      @map("profile_icon_id")
   summonerLevel Int?      @map("summoner_level")
+  /// Current Solo/Flex entries from the last sync; `rank_snapshots` keeps the history for the LP graph.
+  ranks         Json?
+  topMasteries  Json?     @map("top_masteries")
   lastSyncedAt  DateTime? @map("last_synced_at") @db.Timestamptz(3)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)

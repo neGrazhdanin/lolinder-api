@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
 import { PlayerJobEvents } from './player-job-events.js';
+import { PlayerSyncQueue } from './player-sync.queue.js';
 import { PLAYERS_QUEUE } from './players.constants.js';
 import { PlayersController } from './players.controller.js';
 import { PlayersService } from './players.service.js';
@@ -19,6 +20,6 @@ import { PlayersService } from './players.service.js';
     }),
   ],
   controllers: [PlayersController],
-  providers: [PlayersService, PlayerJobEvents],
+  providers: [PlayersService, PlayerJobEvents, PlayerSyncQueue],
 })
 export class PlayersModule {}
