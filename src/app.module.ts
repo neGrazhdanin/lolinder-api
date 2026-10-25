@@ -6,6 +6,7 @@ import { createSchemaValidationPipe } from './common/validation/schema-validatio
 import { CoreModule } from './core/core.module.js';
 import { HealthModule } from './health/health.module.js';
 import { InfraModule } from './infra/infra.module.js';
+import { PlayersModule } from './players/players.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { StaticDataModule } from './static-data/static-data.module.js';
 
@@ -17,6 +18,7 @@ import { StaticDataModule } from './static-data/static-data.module.js';
     HealthModule,
     StaticDataModule,
     RealtimeModule,
+    PlayersModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: HttpErrorFilter },
