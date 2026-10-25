@@ -5,9 +5,15 @@ import { HttpErrorFilter } from './common/errors/http-error.filter.js';
 import { createSchemaValidationPipe } from './common/validation/schema-validation.pipe.js';
 import { CoreModule } from './core/core.module.js';
 import { HealthModule } from './health/health.module.js';
+import { InfraModule } from './infra/infra.module.js';
 
 @Module({
-  imports: [CoreModule, ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]), HealthModule],
+  imports: [
+    CoreModule,
+    InfraModule,
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    HealthModule,
+  ],
   providers: [
     { provide: APP_FILTER, useClass: HttpErrorFilter },
     { provide: APP_PIPE, useFactory: createSchemaValidationPipe },
