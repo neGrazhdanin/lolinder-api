@@ -52,10 +52,10 @@ describe('app (e2e)', () => {
     await app.close();
   });
 
-  it('GET /health returns ok', async () => {
+  it('GET /health reports Postgres and Redis as up', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: 'ok' });
+    expect(res.json()).toEqual({ status: 'ok', checks: { postgres: 'up', redis: 'up' } });
   });
 
   it('sets security headers', async () => {

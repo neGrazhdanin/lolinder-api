@@ -18,6 +18,7 @@ const codeByStatus: Partial<Record<number, ErrorCode>> = {
   [HttpStatus.CONFLICT]: ErrorCode.CONFLICT,
   [HttpStatus.PAYLOAD_TOO_LARGE]: ErrorCode.PAYLOAD_TOO_LARGE,
   [HttpStatus.TOO_MANY_REQUESTS]: ErrorCode.RATE_LIMITED,
+  [HttpStatus.SERVICE_UNAVAILABLE]: ErrorCode.SERVICE_UNAVAILABLE,
 };
 
 @Catch()
@@ -26,7 +27,7 @@ export class HttpErrorFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const { status, body } = toErrorResponse(exception);
-    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR && !(exception instanceof AppException)) {
       this.logger.error(exception);
     }
     void host.switchToHttp().getResponse<FastifyReply>().status(status).send(body);

@@ -6,7 +6,8 @@ Tasks live in GitHub Issues of this repo; epics for later stages are #19–#23.
 
 ## Verify before handing over
 
-`pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e`. E2E needs `pnpm infra:up` (Postgres + Redis in Docker).
+`pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e`. E2E starts its own Postgres and Redis via
+Testcontainers (Docker must be running); `pnpm infra:up` is only for running the app locally.
 The Prisma client is generated into `src/generated/` (gitignored). After a schema change run
 `pnpm db:migrate --name <change>` and commit the migration; never edit an applied migration.
 
