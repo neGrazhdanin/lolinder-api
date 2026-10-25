@@ -13,7 +13,12 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
   app.useLogger(app.get(Logger));
   app.enableShutdownHooks();
   await app.register(helmet);
-  app.enableCors({ origin: config.get('CORS_ORIGINS', { infer: true }), credentials: true });
+  app.enableCors({
+    origin: config.get('CORS_ORIGINS', { infer: true }),
+    credentials: true,
+    // Browsers hide non-safelisted response headers from cross-origin code; the search client reads this one.
+    exposedHeaders: ['Retry-After'],
+  });
   app.useWebSocketAdapter(
     new RedisIoAdapter(
       app,

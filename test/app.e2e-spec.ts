@@ -59,6 +59,16 @@ describe('app (e2e)', () => {
     expect(res.json()).toEqual({ status: 'ok', checks: { postgres: 'up', redis: 'up' } });
   });
 
+  it('lets the web client read Retry-After across origins', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/health',
+      headers: { origin: 'http://localhost:5173' },
+    });
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    expect(res.headers['access-control-expose-headers']).toBe('Retry-After');
+  });
+
   it('sets security headers', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.headers['x-content-type-options']).toBe('nosniff');

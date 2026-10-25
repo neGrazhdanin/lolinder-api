@@ -13,6 +13,9 @@ import {
   playerSchema,
   playerSearchPendingSchema,
   playerSearchQuerySchema,
+  type RankHistory,
+  rankHistoryQuerySchema,
+  rankHistorySchema,
 } from './players.schemas.js';
 import { PlayersService } from './players.service.js';
 
@@ -48,6 +51,15 @@ export class PlayersController {
     @Param({ schema: playerParamsSchema }) { puuid }: z.infer<typeof playerParamsSchema>,
   ): Promise<PlayerProfile> {
     return this.players.profile(puuid);
+  }
+
+  @Get(':puuid/rank-history')
+  @ApiOkResponse({ standardSchema: rankHistorySchema })
+  async rankHistory(
+    @Param({ schema: playerParamsSchema }) { puuid }: z.infer<typeof playerParamsSchema>,
+    @Query({ schema: rankHistoryQuerySchema }) { queue }: z.infer<typeof rankHistoryQuerySchema>,
+  ): Promise<RankHistory> {
+    return this.players.rankHistory(puuid, queue);
   }
 
   // Every accepted refresh spends four Riot requests.
