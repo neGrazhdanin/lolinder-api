@@ -20,6 +20,8 @@ const puuid = (seed: string) => seed.padEnd(78, 'x');
 const byRiotId = (gameName: string, tagLine: string) =>
   `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
 const riot = (host: string) => nock(`https://${host}.api.riotgames.com`);
+// A sync is four Riot calls and a transaction; CI runners need more than the default second.
+const SYNC_POLL = { timeout: 5000 };
 
 function summoner(platform: string, seed: string, profileIconId = 29, summonerLevel = 100) {
   return riot(platform)
@@ -180,7 +182,7 @@ describe('players (e2e)', () => {
       expect(
         await prisma.riotAccount.findUnique({ where: { puuid: puuid('zeus') } }),
       ).toMatchObject({ riotIdKey: 'zeus#kr1', platform: 'euw1' });
-      await expect.poll(() => syncStatus('zeus')).toBe('fresh');
+      await expect.poll(() => syncStatus('zeus'), SYNC_POLL).toBe('fresh');
       // The event follows the commit, so it can land a moment after the data is visible.
       await expect.poll(() => playerUpdated.mock.calls).toContainEqual([{ puuid: puuid('zeus') }]);
     });
@@ -351,7 +353,7 @@ describe('players (e2e)', () => {
       const views = await Promise.all([profile('zeus'), profile('zeus')]);
 
       expect(views.map((res) => res.json().sync.status)).toEqual(['syncing', 'syncing']);
-      await expect.poll(() => syncStatus('zeus')).toBe('fresh');
+      await expect.poll(() => syncStatus('zeus'), SYNC_POLL).toBe('fresh');
       expect((await profile('zeus')).json().ranks[0].leaguePoints).toBe(71);
       expect(await prisma.rankSnapshot.count({ where: { puuid: puuid('zeus') } })).toBe(2);
     });
@@ -368,7 +370,7 @@ describe('players (e2e)', () => {
       });
 
       await profile('zeus');
-      await expect.poll(() => syncStatus('zeus')).toBe('fresh');
+      await expect.poll(() => syncStatus('zeus'), SYNC_POLL).toBe('fresh');
 
       expect(await prisma.rankSnapshot.count({ where: { puuid: puuid('zeus') } })).toBe(2);
     });
@@ -419,7 +421,7 @@ describe('players (e2e)', () => {
       const res = await refresh('zeus');
 
       expect(res.json().sync.status).toBe('syncing');
-      await expect.poll(() => syncStatus('zeus')).toBe('fresh');
+      await expect.poll(() => syncStatus('zeus'), SYNC_POLL).toBe('fresh');
     });
 
     it('still emits player:updated when a sync gives up', async () => {
@@ -447,7 +449,7 @@ describe('players (e2e)', () => {
         gameName: 'Doublelift',
         tagLine: 'NA1',
       });
-      await expect.poll(() => syncStatus('doublelift')).toBe('fresh');
+      await expect.poll(() => syncStatus('doublelift'), SYNC_POLL).toBe('fresh');
     });
 
     it.each([
@@ -506,7 +508,7 @@ describe('players (e2e)', () => {
     const startedAt = performance.now();
     await Promise.all(seeds.map((seed) => refresh(seed)));
     for (const seed of seeds) {
-      await expect.poll(() => syncStatus(seed), { interval: 50 }).toBe('fresh');
+      await expect.poll(() => syncStatus(seed), { ...SYNC_POLL, interval: 50 }).toBe('fresh');
     }
 
     expect(performance.now() - startedAt).toBeLessThan(1400);

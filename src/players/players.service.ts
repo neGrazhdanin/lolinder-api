@@ -47,8 +47,10 @@ export class PlayersService {
 
   /** Always answers from the database; stale data queues a background sync on the way out. */
   async profile(puuid: string): Promise<PlayerProfile> {
-    const account = await this.findAccount(puuid);
+    // Queue before database: a sync finishing between the two reads then shows up as fresh data,
+    // not as a stale row with no job left, which would queue the same sync a second time.
     let syncing = await this.isSyncing(puuid);
+    const account = await this.findAccount(puuid);
     if (!syncing && !isFresh(account.lastSyncedAt)) {
       syncing = await this.syncQueue
         .enqueue(puuid, SyncPriority.BACKGROUND)
@@ -81,10 +83,11 @@ export class PlayersService {
   }
 
   async refresh(puuid: string): Promise<PlayerProfile> {
+    const syncing = await this.isSyncing(puuid);
     const account = await this.findAccount(puuid);
     const sinceSync = account.lastSyncedAt && Date.now() - account.lastSyncedAt.getTime();
     if (sinceSync !== null && sinceSync < REFRESH_COOLDOWN_MS) {
-      return toPlayerProfile(account, await this.isSyncing(puuid));
+      return toPlayerProfile(account, syncing);
     }
     try {
       await this.syncQueue.enqueue(puuid, SyncPriority.USER);
