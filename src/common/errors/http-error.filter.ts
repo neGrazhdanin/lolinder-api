@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
+import type { Socket } from 'socket.io';
 import { AppException } from './app.exception.js';
 import { ErrorCode, type ErrorResponse } from './error-code.js';
 
@@ -29,6 +30,11 @@ export class HttpErrorFilter implements ExceptionFilter {
     const { status, body } = toErrorResponse(exception);
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR && !(exception instanceof AppException)) {
       this.logger.error(exception);
+    }
+    if (host.getType() === 'ws') {
+      // Same `{ code, details? }` contract as HTTP, on the event socket.io clients already listen to.
+      host.switchToWs().getClient<Socket>().emit('exception', body);
+      return;
     }
     void host.switchToHttp().getResponse<FastifyReply>().status(status).send(body);
   }

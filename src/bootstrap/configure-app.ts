@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { errorResponseSchema } from '../common/errors/error-code.js';
 import type { Env } from '../config/env.js';
+import { RedisIoAdapter } from '../realtime/redis-io.adapter.js';
 
 export async function configureApp(app: NestFastifyApplication): Promise<void> {
   const config = app.get<ConfigService<Env, true>>(ConfigService);
@@ -13,6 +14,13 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
   app.enableShutdownHooks();
   await app.register(helmet);
   app.enableCors({ origin: config.get('CORS_ORIGINS', { infer: true }), credentials: true });
+  app.useWebSocketAdapter(
+    new RedisIoAdapter(
+      app,
+      config.get('REDIS_URL', { infer: true }),
+      config.get('CORS_ORIGINS', { infer: true }),
+    ),
+  );
 
   if (config.get('SWAGGER_ENABLED', { infer: true })) {
     const documentConfig = new DocumentBuilder()
