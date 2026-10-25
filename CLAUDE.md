@@ -38,6 +38,10 @@ the client), and commit the migration; never edit an applied migration.
   `StandardSchemaValidationPipe`. No class-validator.
 - Dates ISO 8601 UTC; Riot IDs (`puuid`, `matchId`) are strings; Data Dragon IDs are numbers; JSON keys camelCase.
 - Lists are cursor-paginated: `{ items, nextCursor }`.
+- Realtime is socket.io on the API process (`src/realtime/`); OpenAPI does not describe it, so event
+  names and payloads live in `realtime.events.ts`. Clients emit `player:subscribe` / `player:unsubscribe`
+  with `{ puuid }` (ack `true`); the worker sends `player:updated` through `RealtimeEmitter`. Socket errors
+  arrive as an `exception` event with the same `{ code, details? }`.
 - Postgres: snake_case plural tables via `@@map` / `@map`, `TIMESTAMPTZ` for time.
 - Riot ID lookups go through `riot_id_key` (`riotIdKey()` in `src/riot/riot-id.ts`), never `ILIKE`.
 - History cursors are `(startedAt, matchId)`, matching the `match_participants` indexes.
@@ -49,6 +53,8 @@ the client), and commit the migration; never edit an applied migration.
   Keep value imports for anything injected through a constructor.
 - Fastify listens on `localhost` by default; containers need `HOST=0.0.0.0`.
 - Express middleware does not work here; use `@fastify/*` plugins.
+- Gateways need `@UseFilters(HttpErrorFilter)` and `@SkipThrottle()`: `APP_FILTER` does not reach socket
+  handlers, while the global `ThrottlerGuard` does and puts every socket into one shared bucket.
 - `prisma` on npm tags an 8.0 release candidate as `latest`; the version is pinned to 7.x in `package.json`.
 - `PrismaService` omits `Match.rawJson` and timeline `frames`/`events` by default; opt in per query with
   `omit: { rawJson: false }`.
