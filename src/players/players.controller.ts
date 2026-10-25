@@ -1,11 +1,15 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
+import type { z } from 'zod';
 import {
   type Player,
+  type PlayerProfile,
   type PlayerSearchPending,
   type PlayerSearchQuery,
+  playerParamsSchema,
+  playerProfileSchema,
   playerSchema,
   playerSearchPendingSchema,
   playerSearchQuerySchema,
@@ -36,5 +40,24 @@ export class PlayersController {
       void reply.status(202).header('Retry-After', String(SEARCH_RETRY_AFTER_SECONDS));
     }
     return result;
+  }
+
+  @Get(':puuid')
+  @ApiOkResponse({ standardSchema: playerProfileSchema })
+  async profile(
+    @Param({ schema: playerParamsSchema }) { puuid }: z.infer<typeof playerParamsSchema>,
+  ): Promise<PlayerProfile> {
+    return this.players.profile(puuid);
+  }
+
+  // Every accepted refresh spends four Riot requests.
+  @Post(':puuid/refresh')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOkResponse({ standardSchema: playerProfileSchema })
+  async refresh(
+    @Param({ schema: playerParamsSchema }) { puuid }: z.infer<typeof playerParamsSchema>,
+  ): Promise<PlayerProfile> {
+    return this.players.refresh(puuid);
   }
 }

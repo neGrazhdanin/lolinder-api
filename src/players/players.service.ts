@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { z } from 'zod';
 import { AppException } from '../common/errors/app.exception.js';
@@ -7,28 +7,69 @@ import { ErrorCode } from '../common/errors/error-code.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { CacheService } from '../infra/redis/cache.service.js';
 import { riotIdKey } from '../riot/riot-id.js';
-import { toPlayer } from './player.mapper.js';
+import { isFresh, toPlayer, toPlayerProfile } from './player.mapper.js';
 import { PlayerJobEvents } from './player-job-events.js';
+import { PlayerSyncQueue } from './player-sync.queue.js';
 import {
   notFoundCacheKey,
   PLAYERS_QUEUE,
   PlayerJob,
+  REFRESH_COOLDOWN_MS,
   type ResolveRiotIdData,
   type ResolveRiotIdResult,
   resolveRiotIdJobId,
+  SyncPriority,
 } from './players.constants.js';
-import type { Player, PlayerSearchPending, PlayerSearchQuery } from './players.schemas.js';
+import type {
+  Player,
+  PlayerProfile,
+  PlayerSearchPending,
+  PlayerSearchQuery,
+} from './players.schemas.js';
 
 const SEARCH_WAIT_MS = 5000;
 
 @Injectable()
 export class PlayersService {
+  private readonly logger = new Logger(PlayersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
     @InjectQueue(PLAYERS_QUEUE) private readonly queue: Queue,
     private readonly jobEvents: PlayerJobEvents,
+    private readonly syncQueue: PlayerSyncQueue,
   ) {}
+
+  /** Always answers from the database; stale data queues a background sync on the way out. */
+  async profile(puuid: string): Promise<PlayerProfile> {
+    const account = await this.findAccount(puuid);
+    let syncing = await this.isSyncing(puuid);
+    if (!syncing && !isFresh(account.lastSyncedAt)) {
+      syncing = await this.syncQueue
+        .enqueue(puuid, SyncPriority.BACKGROUND)
+        .catch((error: unknown) => {
+          // Serving the stored profile beats failing the page because Redis is down.
+          this.logger.warn(`Could not queue a sync for ${puuid}: ${String(error)}`);
+          return false;
+        });
+    }
+    return toPlayerProfile(account, syncing);
+  }
+
+  async refresh(puuid: string): Promise<PlayerProfile> {
+    const account = await this.findAccount(puuid);
+    const sinceSync = account.lastSyncedAt && Date.now() - account.lastSyncedAt.getTime();
+    if (sinceSync !== null && sinceSync < REFRESH_COOLDOWN_MS) {
+      return toPlayerProfile(account, await this.isSyncing(puuid));
+    }
+    try {
+      await this.syncQueue.enqueue(puuid, SyncPriority.USER);
+    } catch {
+      throw new AppException(ErrorCode.SERVICE_UNAVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return toPlayerProfile(account, true);
+  }
 
   async search(query: PlayerSearchQuery): Promise<Player | PlayerSearchPending> {
     const key = riotIdKey(query.gameName, query.tagLine);
@@ -36,7 +77,7 @@ export class PlayersService {
       where: { riotIdKey: key, platform: query.platform },
     });
     if (stored) {
-      return toPlayer(stored);
+      return toPlayer(stored, await this.isSyncing(stored.puuid));
     }
     if (await this.cache.get(notFoundCacheKey(query.platform, key), z.literal(true))) {
       throw playerNotFound();
@@ -49,9 +90,10 @@ export class PlayersService {
     if ('notFound' in result) {
       throw playerNotFound();
     }
-    return toPlayer(
-      await this.prisma.riotAccount.findUniqueOrThrow({ where: { puuid: result.puuid } }),
-    );
+    const account = await this.prisma.riotAccount.findUniqueOrThrow({
+      where: { puuid: result.puuid },
+    });
+    return toPlayer(account, await this.isSyncing(account.puuid));
   }
 
   private async enqueueResolve(query: PlayerSearchQuery, key: string): Promise<Job> {
@@ -87,6 +129,18 @@ export class PlayersService {
       }
       return undefined;
     }
+  }
+
+  private async findAccount(puuid: string) {
+    const account = await this.prisma.riotAccount.findUnique({ where: { puuid } });
+    if (!account) {
+      throw playerNotFound();
+    }
+    return account;
+  }
+
+  private async isSyncing(puuid: string): Promise<boolean> {
+    return this.syncQueue.isSyncing(puuid).catch(() => false);
   }
 }
 

@@ -13,22 +13,13 @@ export const summonerSchema = z.object({
   summonerLevel: z.number().int(),
 });
 
+// Riot adds queues and tiers for event modes (for example JADE_RANKED_SOLO_5x5 with tier WOOD), so
+// these stay plain strings here and callers keep the values they know.
 export const leagueEntrySchema = z.object({
   puuid: z.string(),
   queueType: z.string(),
-  tier: z.enum([
-    'IRON',
-    'BRONZE',
-    'SILVER',
-    'GOLD',
-    'PLATINUM',
-    'EMERALD',
-    'DIAMOND',
-    'MASTER',
-    'GRANDMASTER',
-    'CHALLENGER',
-  ]),
-  rank: z.enum(['I', 'II', 'III', 'IV']),
+  tier: z.string(),
+  rank: z.string(),
   leaguePoints: z.number().int(),
   wins: z.number().int(),
   losses: z.number().int(),
