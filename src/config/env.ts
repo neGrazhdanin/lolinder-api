@@ -20,6 +20,8 @@ export const envSchema = z
     SWAGGER_ENABLED: z.stringbool().optional(),
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+    // Optional here because only the worker talks to Riot; RiotClient fails fast without it.
+    RIOT_API_KEY: z.string().startsWith('RGAPI-').optional(),
   })
   .transform((env) => ({
     ...env,
