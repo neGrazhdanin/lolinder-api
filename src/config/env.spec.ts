@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { validateEnv } from './env.js';
 
+const RIOT_KEY = 'RGAPI-test'; // secrets-scan:allow
+
 const required = {
   DATABASE_URL: 'postgresql://localhost:5432/lolinder',
   REDIS_URL: 'redis://localhost:6380',
@@ -50,5 +52,10 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...required, REDIS_URL: 'http://localhost:6380' })).toThrow(
       /REDIS_URL/,
     );
+  });
+
+  it('accepts only Riot-issued API keys', () => {
+    expect(validateEnv({ ...required, RIOT_API_KEY: RIOT_KEY }).RIOT_API_KEY).toBe(RIOT_KEY);
+    expect(() => validateEnv({ ...required, RIOT_API_KEY: 'test' })).toThrow(/RIOT_API_KEY/);
   });
 });
