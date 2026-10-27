@@ -6,6 +6,8 @@ export const RealtimeEvent = {
   SUBSCRIBE_PLAYER: 'player:subscribe',
   UNSUBSCRIBE_PLAYER: 'player:unsubscribe',
   PLAYER_UPDATED: 'player:updated',
+  /** Match history of the player gained matches, or a history job gave up. */
+  PLAYER_MATCHES_UPDATED: 'player:matches-updated',
 } as const;
 
 export function playerRoom(puuid: string): string {
