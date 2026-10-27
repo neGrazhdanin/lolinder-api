@@ -21,6 +21,10 @@ function account(lastSyncedAt: Date | null): RiotAccount {
     ranks: [],
     topMasteries: [],
     lastSyncedAt,
+    matchHistoryFrom: null,
+    matchHistoryTo: null,
+    matchHistoryComplete: false,
+    matchHistorySyncedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

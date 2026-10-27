@@ -43,8 +43,13 @@ export const matchIdsSchema = z.array(z.string());
 const matchParticipantSchema = z.looseObject({
   participantId: z.number().int(),
   puuid: z.string(),
+  riotIdGameName: z.string().optional(),
+  riotIdTagline: z.string().optional(),
   teamId: z.number().int(),
+  playerSubteamId: z.number().int().optional(),
+  placement: z.number().int().optional(),
   championId: z.number().int(),
+  champLevel: z.number().int(),
   teamPosition: z.string(),
   win: z.boolean(),
   kills: z.number().int(),
@@ -64,7 +69,21 @@ const matchParticipantSchema = z.looseObject({
   item6: z.number().int(),
   summoner1Id: z.number().int(),
   summoner2Id: z.number().int(),
-  perks: z.looseObject({}),
+  gameEndedInEarlySurrender: z.boolean().optional(),
+  perks: z.looseObject({
+    statPerks: z
+      .looseObject({ offense: z.number().int(), flex: z.number().int(), defense: z.number().int() })
+      .optional(),
+    styles: z
+      .array(
+        z.looseObject({
+          description: z.string(),
+          style: z.number().int(),
+          selections: z.array(z.looseObject({ perk: z.number().int() })),
+        }),
+      )
+      .default([]),
+  }),
 });
 
 export const matchSchema = z.looseObject({
@@ -77,6 +96,8 @@ export const matchSchema = z.looseObject({
     queueId: z.number().int(),
     gameVersion: z.string(),
     gameStartTimestamp: z.number().int(),
+    // Absent before patch 11.20, when `gameDuration` was in milliseconds instead of seconds.
+    gameEndTimestamp: z.number().int().optional(),
     gameDuration: z.number().int(),
     participants: z.array(matchParticipantSchema),
     teams: z.array(z.looseObject({ teamId: z.number().int(), win: z.boolean() })),
@@ -137,5 +158,6 @@ export type SummonerDto = z.infer<typeof summonerSchema>;
 export type LeagueEntryDto = z.infer<typeof leagueEntrySchema>;
 export type ChampionMasteryDto = z.infer<typeof championMasterySchema>;
 export type MatchDto = z.infer<typeof matchSchema>;
+export type MatchParticipantDto = z.infer<typeof matchParticipantSchema>;
 export type MatchTimelineDto = z.infer<typeof matchTimelineSchema>;
 export type ActiveGameDto = z.infer<typeof activeGameSchema>;
