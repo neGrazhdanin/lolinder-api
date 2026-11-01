@@ -38,6 +38,7 @@ const participant = {
   kills: 7,
   deaths: 2,
   assists: 9,
+  champLevel: 17,
   totalDamageDealtToChampions: 24_000,
   goldEarned: 12_500,
   totalMinionsKilled: 210,

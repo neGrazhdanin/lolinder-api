@@ -16,4 +16,8 @@ export class RealtimeEmitter {
   playerUpdated(event: PlayerUpdatedEvent): void {
     this.emitter.to(playerRoom(event.puuid)).emit(RealtimeEvent.PLAYER_UPDATED, event);
   }
+
+  playerMatchesUpdated(event: PlayerUpdatedEvent): void {
+    this.emitter.to(playerRoom(event.puuid)).emit(RealtimeEvent.PLAYER_MATCHES_UPDATED, event);
+  }
 }

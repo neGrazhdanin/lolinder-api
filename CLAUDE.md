@@ -8,6 +8,8 @@ Tasks live in GitHub Issues of this repo; epics for later stages are #19–#23.
 
 `pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e`. E2E starts its own Postgres and Redis via
 Testcontainers (Docker must be running); `pnpm infra:up` is only for running the app locally.
+E2E files run in parallel against one Redis, so the Riot limiter windows are shared: each file that runs a
+worker keeps its own Riot region (players: europe and asia, matches: sea) and its jobs in one file.
 The Prisma client is generated into `src/generated/` (gitignored). After a schema change run
 `pnpm db:migrate --name <change>`, then `pnpm db:generate` (Prisma 7 `migrate dev` no longer regenerates
 the client), and commit the migration; never edit an applied migration.
@@ -41,11 +43,14 @@ the client), and commit the migration; never edit an applied migration.
 - Lists are cursor-paginated: `{ items, nextCursor }`.
 - Realtime is socket.io on the API process (`src/realtime/`); OpenAPI does not describe it, so event
   names and payloads live in `realtime.events.ts`. Clients emit `player:subscribe` / `player:unsubscribe`
-  with `{ puuid }` (ack `true`); the worker sends `player:updated` through `RealtimeEmitter`. Socket errors
+  with `{ puuid }` (ack `true`); the worker sends `player:updated` (profile) and `player:matches-updated`
+  (match history) to that room through `RealtimeEmitter`, also when a job gives up. Socket errors
   arrive as an `exception` event with the same `{ code, details? }`.
 - Postgres: snake_case plural tables via `@@map` / `@map`, `TIMESTAMPTZ` for time.
 - Riot ID lookups go through `riot_id_key` (`riotIdKey()` in `src/riot/riot-id.ts`), never `ILIKE`.
-- History cursors are `(startedAt, matchId)`, matching the `match_participants` indexes.
+- History cursors are `(startedAt, matchId)`, matching the `match_participants` indexes. The match
+  history cursor also carries the run start (`matchHistoryFrom`) it was issued under; see
+  `src/matches/matches.service.ts` for why a page queues at most one older batch.
 
 ## Gotchas
 

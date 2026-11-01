@@ -49,20 +49,27 @@ enum StaticDataKind {
 
 /// PUUID is encrypted per API key: gameName and tagLine are kept to re-resolve it after a key change.
 model RiotAccount {
-  puuid         String    @id @db.VarChar(78)
-  gameName      String    @map("game_name")
-  tagLine       String    @map("tag_line")
+  puuid                String    @id @db.VarChar(78)
+  gameName             String    @map("game_name")
+  tagLine              String    @map("tag_line")
   /// Lowercased `gameName#tagLine`: Riot IDs are case-insensitive, and ILIKE cannot use a B-tree index.
-  riotIdKey     String    @map("riot_id_key")
-  platform      String
-  profileIconId Int?      @map("profile_icon_id")
-  summonerLevel Int?      @map("summoner_level")
+  riotIdKey            String    @map("riot_id_key")
+  platform             String
+  profileIconId        Int?      @map("profile_icon_id")
+  summonerLevel        Int?      @map("summoner_level")
   /// Current Solo/Flex entries from the last sync; `rank_snapshots` keeps the history for the LP graph.
-  ranks         Json?
-  topMasteries  Json?     @map("top_masteries")
-  lastSyncedAt  DateTime? @map("last_synced_at") @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  ranks                Json?
+  topMasteries         Json?     @map("top_masteries")
+  lastSyncedAt         DateTime? @map("last_synced_at") @db.Timestamptz(3)
+  /// Start times of the oldest and newest match in an unbroken run of this player's match IDs from Riot.
+  /// Other players' lookups store this player's matches outside the run; history pages stay inside it.
+  matchHistoryFrom     DateTime? @map("match_history_from") @db.Timestamptz(3)
+  matchHistoryTo       DateTime? @map("match_history_to") @db.Timestamptz(3)
+  /// Riot has no matches older than `matchHistoryFrom`.
+  matchHistoryComplete Boolean   @default(false) @map("match_history_complete")
+  matchHistorySyncedAt DateTime? @map("match_history_synced_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   rankSnapshots RankSnapshot[]
 
@@ -96,6 +103,7 @@ model Match {
   startedAt   DateTime @map("started_at") @db.Timestamptz(3)
   durationSec Int      @map("duration_sec")
   winnerTeam  Int?     @map("winner_team")
+  remake      Boolean  @default(false)
   rawJson     Json     @map("raw_json")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -111,10 +119,17 @@ model MatchParticipant {
   matchId           String   @map("match_id")
   participantId     Int      @map("participant_id")
   puuid             String   @db.VarChar(78)
+  gameName          String?  @map("game_name")
+  tagLine           String?  @map("tag_line")
   queueId           Int      @map("queue_id")
   startedAt         DateTime @map("started_at") @db.Timestamptz(3)
   teamId            Int      @map("team_id")
+  /// Arena duo (1–8); null in team modes.
+  subteamId         Int?     @map("subteam_id")
+  /// Arena finish (1–8); null in team modes.
+  placement         Int?
   championId        Int      @map("champion_id")
+  champLevel        Int      @map("champ_level")
   role              String?
   kills             Int
   deaths            Int

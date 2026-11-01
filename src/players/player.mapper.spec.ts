@@ -26,6 +26,10 @@ const account: RiotAccount = {
     { championId: 7, level: 50, points: 1_000_000, lastPlayedAt: '2026-10-24T12:00:00.000Z' },
   ],
   lastSyncedAt: new Date('2026-10-25T10:00:00.000Z'),
+  matchHistoryFrom: null,
+  matchHistoryTo: null,
+  matchHistoryComplete: false,
+  matchHistorySyncedAt: null,
   createdAt: new Date('2026-10-20T00:00:00.000Z'),
   updatedAt: new Date('2026-10-25T10:00:00.000Z'),
 };
