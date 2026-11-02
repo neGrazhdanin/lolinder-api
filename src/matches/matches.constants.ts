@@ -28,6 +28,8 @@ export function timelineJobId(matchId: string): string {
   return `timeline-${matchId}`;
 }
 
+export const TIMELINE_RETRY_AFTER_SECONDS = 2;
+
 export const MATCH_IDS_BATCH = 20;
 export const MATCH_FETCH_PARALLEL = 5;
 // Riot does not document which game time `endTime` filters on; starting the next batch this much later

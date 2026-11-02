@@ -171,3 +171,26 @@ export const storedTimelineEventsSchema = z.object({
 
 export type StoredTimelineFrames = z.infer<typeof storedTimelineFramesSchema>;
 export type StoredTimelineEvents = z.infer<typeof storedTimelineEventsSchema>;
+
+export const timelineSchema = z
+  .object({
+    matchId: z.string(),
+    frameTimes: z.array(int).describe('Seconds from the start of each frame, about one a minute'),
+    participants: storedTimelineFramesSchema.shape.participants.describe(
+      'Total gold, CS and XP per frame',
+    ),
+    goldDiff: z.array(int).nullable().describe('Blue minus red team gold per frame; null in Arena'),
+    items: z
+      .array(timelineItemEventSchema)
+      .describe('Purchases and sales in game order, with undone ones removed'),
+    skills: z.array(timelineSkillEventSchema).describe('Skill points in game order'),
+  })
+  .meta({ id: 'MatchTimeline' });
+
+export type Timeline = z.infer<typeof timelineSchema>;
+
+export const timelinePendingSchema = z
+  .object({ status: z.literal('pending') })
+  .meta({ id: 'MatchTimelinePending' });
+
+export type TimelinePending = z.infer<typeof timelinePendingSchema>;
