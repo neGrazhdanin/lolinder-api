@@ -140,3 +140,34 @@ export const matchHistoryPageSchema = z
 export type MatchHistoryPage = z.infer<typeof matchHistoryPageSchema>;
 
 export const playerMatchesParamsSchema = z.object({ puuid: puuidSchema });
+
+const int = z.number().int();
+
+// Shapes of `match_timelines.frames` and `.events`, so reads parse what the worker wrote.
+export const storedTimelineFramesSchema = z.object({
+  times: z.array(int),
+  participants: z.array(
+    z.object({
+      participantId: int,
+      gold: z.array(int),
+      cs: z.array(int),
+      xp: z.array(int),
+    }),
+  ),
+});
+
+export const timelineItemEventSchema = z
+  .object({ participantId: int, atSec: int, itemId: int, kind: z.enum(['buy', 'sell']) })
+  .meta({ id: 'TimelineItemEvent' });
+
+export const timelineSkillEventSchema = z
+  .object({ participantId: int, atSec: int, slot: int.describe('1–4: Q, W, E, R') })
+  .meta({ id: 'TimelineSkillEvent' });
+
+export const storedTimelineEventsSchema = z.object({
+  items: z.array(timelineItemEventSchema),
+  skills: z.array(timelineSkillEventSchema),
+});
+
+export type StoredTimelineFrames = z.infer<typeof storedTimelineFramesSchema>;
+export type StoredTimelineEvents = z.infer<typeof storedTimelineEventsSchema>;

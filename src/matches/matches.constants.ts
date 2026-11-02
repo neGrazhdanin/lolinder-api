@@ -5,6 +5,7 @@ export const MATCHES_CONCURRENCY = 10;
 export const MatchJob = {
   SYNC_NEWEST: 'sync-newest-matches',
   LOAD_OLDER: 'load-older-matches',
+  FETCH_TIMELINE: 'fetch-match-timeline',
 } as const;
 
 export interface MatchHistoryJobData {
@@ -17,6 +18,14 @@ export function newestMatchesJobId(puuid: string): string {
 
 export function olderMatchesJobId(puuid: string): string {
   return `matches-older-${puuid}`;
+}
+
+export interface TimelineJobData {
+  matchId: string;
+}
+
+export function timelineJobId(matchId: string): string {
+  return `timeline-${matchId}`;
 }
 
 export const MATCH_IDS_BATCH = 20;
