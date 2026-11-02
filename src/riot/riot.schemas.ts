@@ -111,8 +111,28 @@ export const matchTimelineSchema = z.looseObject({
     frames: z.array(
       z.looseObject({
         timestamp: z.number().int(),
-        participantFrames: z.record(z.string(), z.looseObject({})),
-        events: z.array(z.looseObject({ type: z.string(), timestamp: z.number().int() })),
+        participantFrames: z.record(
+          z.string(),
+          z.looseObject({
+            participantId: z.number().int(),
+            totalGold: z.number().int(),
+            xp: z.number().int(),
+            minionsKilled: z.number().int(),
+            jungleMinionsKilled: z.number().int(),
+          }),
+        ),
+        events: z.array(
+          z.looseObject({
+            type: z.string(),
+            timestamp: z.number().int(),
+            participantId: z.number().int().optional(),
+            itemId: z.number().int().optional(),
+            beforeId: z.number().int().optional(),
+            afterId: z.number().int().optional(),
+            skillSlot: z.number().int().optional(),
+            levelUpType: z.string().optional(),
+          }),
+        ),
       }),
     ),
   }),
