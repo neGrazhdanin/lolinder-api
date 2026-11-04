@@ -4,8 +4,9 @@ import { ErrorCode } from '../common/errors/error-code.js';
 import type { Prisma, RiotAccount } from '../generated/prisma/client.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { isFresh } from '../players/player.mapper.js';
-import { toMatch, toMatchHistoryItem } from './match.mapper.js';
+import { toMatch, toMatchHistoryItem, toTimeline } from './match.mapper.js';
 import { MatchHistoryQueue } from './match-history.queue.js';
+import { MatchTimelineQueue } from './match-timeline.queue.js';
 import { QUEUE_IDS } from './matches.constants.js';
 import {
   encodeMatchCursor,
@@ -13,6 +14,10 @@ import {
   type MatchCursor,
   type MatchHistoryPage,
   type MatchHistoryQuery,
+  storedTimelineEventsSchema,
+  storedTimelineFramesSchema,
+  type Timeline,
+  type TimelinePending,
 } from './matches.schemas.js';
 
 const historyParticipant = {
@@ -34,6 +39,7 @@ export class MatchesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly historyQueue: MatchHistoryQueue,
+    private readonly timelineQueue: MatchTimelineQueue,
   ) {}
 
   async history(puuid: string, query: MatchHistoryQuery): Promise<MatchHistoryPage> {
@@ -85,6 +91,32 @@ export class MatchesService {
       throw new AppException(ErrorCode.MATCH_NOT_FOUND, HttpStatus.NOT_FOUND);
     }
     return toMatch(match);
+  }
+
+  async timeline(matchId: string): Promise<Timeline | TimelinePending> {
+    const match = await this.prisma.match.findUnique({
+      where: { matchId },
+      select: {
+        participants: { select: { participantId: true, teamId: true, subteamId: true } },
+        timeline: { select: { frames: true, events: true } },
+      },
+    });
+    if (!match) {
+      throw new AppException(ErrorCode.MATCH_NOT_FOUND, HttpStatus.NOT_FOUND);
+    }
+    if (match.timeline) {
+      const frames = storedTimelineFramesSchema.parse(match.timeline.frames);
+      if (frames.times.length === 0) {
+        throw new AppException(ErrorCode.TIMELINE_UNAVAILABLE, HttpStatus.NOT_FOUND);
+      }
+      const events = storedTimelineEventsSchema.parse(match.timeline.events);
+      return toTimeline(matchId, frames, events, match.participants);
+    }
+    const queued = await this.timelineQueue.fetch(matchId).catch(() => false);
+    if (!queued) {
+      throw new AppException(ErrorCode.SERVICE_UNAVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return { status: 'pending' };
   }
 
   private findHistory(account: RiotAccount, query: MatchHistoryQuery) {

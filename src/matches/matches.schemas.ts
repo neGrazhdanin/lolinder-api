@@ -140,3 +140,57 @@ export const matchHistoryPageSchema = z
 export type MatchHistoryPage = z.infer<typeof matchHistoryPageSchema>;
 
 export const playerMatchesParamsSchema = z.object({ puuid: puuidSchema });
+
+const int = z.number().int();
+
+// Shapes of `match_timelines.frames` and `.events`, so reads parse what the worker wrote.
+export const storedTimelineFramesSchema = z.object({
+  times: z.array(int),
+  participants: z.array(
+    z.object({
+      participantId: int,
+      gold: z.array(int),
+      cs: z.array(int),
+      xp: z.array(int),
+    }),
+  ),
+});
+
+export const timelineItemEventSchema = z
+  .object({ participantId: int, atSec: int, itemId: int, kind: z.enum(['buy', 'sell']) })
+  .meta({ id: 'TimelineItemEvent' });
+
+export const timelineSkillEventSchema = z
+  .object({ participantId: int, atSec: int, slot: int.describe('1–4: Q, W, E, R') })
+  .meta({ id: 'TimelineSkillEvent' });
+
+export const storedTimelineEventsSchema = z.object({
+  items: z.array(timelineItemEventSchema),
+  skills: z.array(timelineSkillEventSchema),
+});
+
+export type StoredTimelineFrames = z.infer<typeof storedTimelineFramesSchema>;
+export type StoredTimelineEvents = z.infer<typeof storedTimelineEventsSchema>;
+
+export const timelineSchema = z
+  .object({
+    matchId: z.string(),
+    frameTimes: z.array(int).describe('Seconds from the start of each frame, about one a minute'),
+    participants: storedTimelineFramesSchema.shape.participants.describe(
+      'Total gold, CS and XP per frame',
+    ),
+    goldDiff: z.array(int).nullable().describe('Blue minus red team gold per frame; null in Arena'),
+    items: z
+      .array(timelineItemEventSchema)
+      .describe('Purchases and sales in game order, with undone ones removed'),
+    skills: z.array(timelineSkillEventSchema).describe('Skill points in game order'),
+  })
+  .meta({ id: 'MatchTimeline' });
+
+export type Timeline = z.infer<typeof timelineSchema>;
+
+export const timelinePendingSchema = z
+  .object({ status: z.literal('pending') })
+  .meta({ id: 'MatchTimelinePending' });
+
+export type TimelinePending = z.infer<typeof timelinePendingSchema>;

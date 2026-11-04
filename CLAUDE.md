@@ -18,7 +18,8 @@ the client), and commit the migration; never edit an applied migration.
 
 - The API never calls Riot. Handlers read Postgres/Redis and enqueue a BullMQ job; the worker
   (`src/worker.ts`) calls Riot, saves, and emits a WebSocket event. The one request that waits is a search
-  for an unknown Riot ID: it waits for its job up to 5 s, then answers 202 with `Retry-After`.
+  for an unknown Riot ID: it waits for its job up to 5 s, then answers 202 with `Retry-After`. Data fetched
+  on first view (match timelines) answers 202 with `Retry-After` at once and the client repeats the request.
 - `RiotClient` is called only from worker processors. Every Riot call goes through its Redis rate
   limiter; limits come from response headers, not constants. A 429 pauses the routing value (application
   limit) or just the endpoint (method/service limit) for `Retry-After`.

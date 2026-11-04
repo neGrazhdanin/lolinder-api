@@ -1,5 +1,12 @@
 import type { MatchParticipant, Match as MatchRow } from '../generated/prisma/client.js';
-import { type Match, type MatchHistoryItem, matchRunesSchema } from './matches.schemas.js';
+import {
+  type Match,
+  type MatchHistoryItem,
+  matchRunesSchema,
+  type StoredTimelineEvents,
+  type StoredTimelineFrames,
+  type Timeline,
+} from './matches.schemas.js';
 
 type HistoryParticipant = Pick<
   MatchParticipant,
@@ -73,5 +80,32 @@ function toStats(participant: MatchParticipant) {
     summonerSpells: participant.summonerSpells,
     runes: matchRunesSchema.parse(participant.runes),
     win: participant.win,
+  };
+}
+
+type TeamOf = Pick<MatchParticipant, 'participantId' | 'teamId' | 'subteamId'>;
+
+export function toTimeline(
+  matchId: string,
+  frames: StoredTimelineFrames,
+  events: StoredTimelineEvents,
+  participants: TeamOf[],
+): Timeline {
+  const teamOf = new Map(participants.map((p) => [p.participantId, p.teamId]));
+  const arena = participants.some((p) => p.subteamId !== null);
+  return {
+    matchId,
+    frameTimes: frames.times,
+    participants: frames.participants,
+    goldDiff: arena
+      ? null
+      : frames.times.map((_, i) =>
+          frames.participants.reduce((diff, p) => {
+            const gold = p.gold[i] ?? 0;
+            return teamOf.get(p.participantId) === 100 ? diff + gold : diff - gold;
+          }, 0),
+        ),
+    items: events.items,
+    skills: events.skills,
   };
 }

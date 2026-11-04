@@ -14,7 +14,7 @@ import type { MatchHistoryPage } from '../src/matches/matches.schemas.js';
 import { MatchesWorkerModule } from '../src/matches/matches-worker.module.js';
 import { RealtimeEmitter } from '../src/realtime/realtime.emitter.js';
 import { riotIdKey } from '../src/riot/riot-id.js';
-import { matchTimes, riotMatch } from './fixtures/matches.js';
+import { matchTimes, riotMatch, riotTimeline } from './fixtures/matches.js';
 
 // All tests that touch the `matches` queue live in this file, for the same reason as in players.e2e-spec.
 const puuid = (seed: string) => `mh-${seed}`.padEnd(78, 'x');
@@ -363,6 +363,59 @@ describe('matches (e2e)', () => {
       const res = await app.inject({ method: 'GET', url: '/matches/not-a-match' });
 
       expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe('timeline', () => {
+    const timeline = (matchId: string) =>
+      app.inject({ method: 'GET', url: `/matches/${matchId}/timeline` });
+    const storedMatchId = (index: number) =>
+      nth(buildMatches('first', matchTimes(3, NEWEST)), index).metadata.matchId;
+
+    it('fetches the timeline on first open and serves it from the database after', async () => {
+      const matchId = storedMatchId(0);
+      sea()
+        .get(`/lol/match/v5/matches/${matchId}/timeline`)
+        .once()
+        .reply(200, riotTimeline(matchId));
+
+      const first = await timeline(matchId);
+      expect(first.statusCode).toBe(202);
+      expect(first.headers['retry-after']).toBe('2');
+      expect(first.json()).toEqual({ status: 'pending' });
+
+      await expect.poll(async () => (await timeline(matchId)).statusCode, JOB_POLL).toBe(200);
+      const body = (await timeline(matchId)).json();
+      expect(body).toMatchObject({
+        matchId,
+        frameTimes: [0, 60, 120],
+        goldDiff: [0, 500, 1000],
+        items: [{ participantId: 1, atSec: 3, itemId: 1055, kind: 'buy' }],
+        skills: [{ participantId: 1, atSec: 65, slot: 3 }],
+      });
+      expect(body.participants).toHaveLength(10);
+      expect(body.participants[5]).toEqual({
+        participantId: 6,
+        gold: [500, 800, 1100],
+        cs: [0, 8, 16],
+        xp: [0, 400, 800],
+      });
+    });
+
+    it('remembers a timeline Riot no longer has', async () => {
+      const matchId = storedMatchId(1);
+      sea().get(`/lol/match/v5/matches/${matchId}/timeline`).once().reply(404, {});
+
+      expect((await timeline(matchId)).statusCode).toBe(202);
+      await expect.poll(async () => (await timeline(matchId)).statusCode, JOB_POLL).toBe(404);
+      expect((await timeline(matchId)).json()).toEqual({ code: 'TIMELINE_UNAVAILABLE' });
+    });
+
+    it('answers MATCH_NOT_FOUND for a match that was never stored', async () => {
+      const res = await timeline('OC1_2');
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ code: 'MATCH_NOT_FOUND' });
     });
   });
 });

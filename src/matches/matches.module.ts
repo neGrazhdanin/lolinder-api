@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
 import { MatchHistoryQueue } from './match-history.queue.js';
+import { MatchTimelineQueue } from './match-timeline.queue.js';
 import { MATCHES_QUEUE } from './matches.constants.js';
 import { MatchesController } from './matches.controller.js';
 import { MatchesService } from './matches.service.js';
@@ -19,6 +20,6 @@ import { MatchesService } from './matches.service.js';
     }),
   ],
   controllers: [MatchesController],
-  providers: [MatchesService, MatchHistoryQueue],
+  providers: [MatchesService, MatchHistoryQueue, MatchTimelineQueue],
 })
 export class MatchesModule {}

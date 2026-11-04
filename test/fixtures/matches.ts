@@ -82,3 +82,47 @@ export function riotMatch({
     },
   };
 }
+
+export function riotTimeline(matchId: string) {
+  const frame = (minute: number, events: object[] = []) => ({
+    timestamp: minute * 60_000,
+    participantFrames: Object.fromEntries(
+      Array.from({ length: 10 }, (_, i) => [
+        String(i + 1),
+        {
+          participantId: i + 1,
+          // Blue side (1–5) earns 100 gold more per minute than red.
+          totalGold: 500 + minute * (i < 5 ? 400 : 300),
+          xp: minute * 400,
+          minionsKilled: minute * 8,
+          jungleMinionsKilled: 0,
+          level: 1 + minute,
+        },
+      ]),
+    ),
+    events,
+  });
+  return {
+    metadata: { matchId, participants: [] },
+    info: {
+      frameInterval: 60_000,
+      frames: [
+        frame(0, [
+          { type: 'ITEM_PURCHASED', timestamp: 3_000, participantId: 1, itemId: 1055 },
+          { type: 'ITEM_PURCHASED', timestamp: 4_000, participantId: 1, itemId: 2003 },
+          { type: 'ITEM_UNDO', timestamp: 5_000, participantId: 1, beforeId: 2003, afterId: 0 },
+        ]),
+        frame(1, [
+          {
+            type: 'SKILL_LEVEL_UP',
+            timestamp: 65_000,
+            participantId: 1,
+            skillSlot: 3,
+            levelUpType: 'NORMAL',
+          },
+        ]),
+        frame(2),
+      ],
+    },
+  };
+}
