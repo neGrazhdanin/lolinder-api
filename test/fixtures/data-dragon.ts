@@ -43,7 +43,7 @@ export function dataDragonFiles(locale: DataDragonLocale) {
       data: {
         '1001': {
           name: n.boots,
-          description: '<mainText>ignored</mainText>',
+          description: '<mainText><stats><attention>25</attention> Move Speed</stats></mainText>',
           plaintext: 'Slightly increases Move Speed',
           into: ['3006', '3009'],
           image: { full: '1001.png' },
@@ -68,6 +68,7 @@ export function dataDragonFiles(locale: DataDragonLocale) {
                 icon: 'perk-images/Styles/Domination/Electrocute/Electrocute.png',
                 name: n.electrocute,
                 shortDesc: 'ignored',
+                longDesc: 'Hitting a champion with <b>3</b> separate attacks deals bonus damage.',
               },
             ],
           },
@@ -82,6 +83,9 @@ export function dataDragonFiles(locale: DataDragonLocale) {
           key: '4',
           name: n.flash,
           image: { full: 'SummonerFlash.png' },
+          description: 'Teleports your champion a short distance.',
+          cooldown: [300],
+          tooltip: 'ignored',
         },
       },
     },

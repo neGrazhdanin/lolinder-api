@@ -43,6 +43,7 @@ enum StaticDataKind {
   ITEMS           @map("items")
   RUNES           @map("runes")
   SUMMONER_SPELLS @map("summoner_spells")
+  DESCRIPTIONS    @map("descriptions")
 
   @@map("static_data_kind")
 }

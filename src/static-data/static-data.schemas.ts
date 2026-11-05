@@ -69,6 +69,27 @@ export const staticDataSetsSchema = z.object({
 
 export type StaticDataSets = z.infer<typeof staticDataSetsSchema>;
 
+const describedSchema = z.object({
+  id: z.number().int(),
+  description: z.string().describe('Data Dragon markup: custom tags such as <stats> and <passive>'),
+});
+
+// Lazy: item descriptions alone are ~300 KB per locale, too heavy for the bundle every page loads.
+export const staticDataDescriptionsSchema = z
+  .object({
+    items: z.array(describedSchema),
+    runes: z.array(describedSchema),
+    summonerSpells: z.array(describedSchema.extend({ cooldownSec: z.number().nullable() })),
+  })
+  .meta({ id: 'StaticDataDescriptions' });
+
+export type StaticDataDescriptions = z.infer<typeof staticDataDescriptionsSchema>;
+
+export interface StaticDataImport {
+  sets: StaticDataSets;
+  descriptions: StaticDataDescriptions;
+}
+
 export const staticDataBundleSchema = staticDataSetsSchema
   .extend({ version: z.string(), locale: staticLocaleSchema })
   .meta({ id: 'StaticDataBundle' });
