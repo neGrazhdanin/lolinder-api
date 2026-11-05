@@ -11,3 +11,8 @@ export const KIND_OF_SET: Record<keyof StaticDataSets, StaticDataKind> = {
   runeTrees: StaticDataKind.RUNES,
   summonerSpells: StaticDataKind.SUMMONER_SPELLS,
 };
+
+export const IMPORTED_KINDS: readonly StaticDataKind[] = [
+  ...Object.values(KIND_OF_SET),
+  StaticDataKind.DESCRIPTIONS,
+];
