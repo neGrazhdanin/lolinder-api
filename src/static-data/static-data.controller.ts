@@ -7,8 +7,10 @@ import {
   dataDragonVersionSchema,
   STATIC_LOCALES,
   type StaticDataBundle,
+  type StaticDataDescriptions,
   type StaticDataVersion,
   staticDataBundleSchema,
+  staticDataDescriptionsSchema,
   staticDataVersionSchema,
   staticLocaleSchema,
 } from './static-data.schemas.js';
@@ -48,5 +50,20 @@ export class StaticDataController {
       throw new AppException(ErrorCode.NOT_FOUND, HttpStatus.NOT_FOUND);
     }
     return bundle;
+  }
+
+  @Get(':version/:locale/descriptions')
+  @Header('Cache-Control', 'public, max-age=31536000, immutable')
+  @ApiParam({ name: 'version', example: '16.21.1' })
+  @ApiParam({ name: 'locale', enum: STATIC_LOCALES })
+  @ApiOkResponse({ standardSchema: staticDataDescriptionsSchema })
+  async descriptions(
+    @Param({ schema: bundleParamsSchema }) params: z.infer<typeof bundleParamsSchema>,
+  ): Promise<StaticDataDescriptions> {
+    const descriptions = await this.staticData.descriptions(params.version, params.locale);
+    if (descriptions === null) {
+      throw new AppException(ErrorCode.NOT_FOUND, HttpStatus.NOT_FOUND);
+    }
+    return descriptions;
   }
 }
