@@ -6,13 +6,9 @@ Tasks live in GitHub Issues of this repo; epics for later stages are #19–#23.
 
 ## Verify before handing over
 
-`pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e`. E2E starts its own Postgres and Redis via
-Testcontainers (Docker must be running); `pnpm infra:up` is only for running the app locally.
-E2E files run in parallel against one Redis, so the Riot limiter windows are shared: each file that runs a
-worker keeps its own Riot region (players: europe and asia, matches: sea) and its jobs in one file.
-The Prisma client is generated into `src/generated/` (gitignored). After a schema change run
-`pnpm db:migrate --name <change>`, then `pnpm db:generate` (Prisma 7 `migrate dev` no longer regenerates
-the client), and commit the migration; never edit an applied migration.
+`pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e` (e2e needs Docker running).
+One unit file: `pnpm test src/riot/riot-id.spec.ts`; one e2e file: `pnpm test:e2e test/matches.e2e-spec.ts`.
+Prisma, Riot and e2e rules load from `.claude/rules/` when you work in those files.
 
 ## Architecture invariants
 
@@ -20,11 +16,7 @@ the client), and commit the migration; never edit an applied migration.
   (`src/worker.ts`) calls Riot, saves, and emits a WebSocket event. The one request that waits is a search
   for an unknown Riot ID: it waits for its job up to 5 s, then answers 202 with `Retry-After`. Data fetched
   on first view (match timelines) answers 202 with `Retry-After` at once and the client repeats the request.
-- `RiotClient` is called only from worker processors. Every Riot call goes through its Redis rate
-  limiter; limits come from response headers, not constants. A 429 pauses the routing value (application
-  limit) or just the endpoint (method/service limit) for `Retry-After`.
-- Processors wrap Riot work in `runRiotJob()` (`src/riot/riot-job.ts`): `RiotRateLimitedError` (wait > 2 s)
-  moves the job to delayed instead of sleeping in a worker slot; `RiotSchemaError` is unrecoverable.
+- `RiotClient` is called only from worker processors, through its Redis rate limiter.
 - Finished matches are immutable: stored forever, never re-fetched.
 - `RiotAccount` keeps `gameName`/`tagLine` next to `puuid`: PUUIDs are encrypted per API key and
   change when we move to a Production Key.
@@ -47,11 +39,6 @@ the client), and commit the migration; never edit an applied migration.
   with `{ puuid }` (ack `true`); the worker sends `player:updated` (profile) and `player:matches-updated`
   (match history) to that room through `RealtimeEmitter`, also when a job gives up. Socket errors
   arrive as an `exception` event with the same `{ code, details? }`.
-- Postgres: snake_case plural tables via `@@map` / `@map`, `TIMESTAMPTZ` for time.
-- Riot ID lookups go through `riot_id_key` (`riotIdKey()` in `src/riot/riot-id.ts`), never `ILIKE`.
-- History cursors are `(startedAt, matchId)`, matching the `match_participants` indexes. The match
-  history cursor also carries the run start (`matchHistoryFrom`) it was issued under; see
-  `src/matches/matches.service.ts` for why a page queues at most one older batch.
 
 ## Gotchas
 
@@ -60,13 +47,8 @@ the client), and commit the migration; never edit an applied migration.
   Keep value imports for anything injected through a constructor.
 - Fastify listens on `localhost` by default; containers need `HOST=0.0.0.0`.
 - Express middleware does not work here; use `@fastify/*` plugins.
-- Riot response schemas keep open enums (queue types, tiers) as strings: Riot adds event modes such as
-  `JADE_RANKED_SOLO_5x5` with tier `WOOD`, and a strict enum fails the whole response. Narrow when mapping.
 - Gateways need `@UseFilters(HttpErrorFilter)` and `@SkipThrottle()`: `APP_FILTER` does not reach socket
   handlers, while the global `ThrottlerGuard` does and puts every socket into one shared bucket.
-- `prisma` on npm tags an 8.0 release candidate as `latest`; the version is pinned to 7.x in `package.json`.
-- `PrismaService` omits `Match.rawJson` and timeline `frames`/`events` by default; opt in per query with
-  `omit: { rawJson: false }`.
 - Shared clients (Redis, Prisma) close in `onApplicationShutdown`; `WorkerShutdown` closes BullMQ workers
   earlier so active jobs finish with live connections. Do not close shared clients in `onModuleDestroy`.
 
@@ -75,5 +57,7 @@ the client), and commit the migration; never edit an applied migration.
 - Branch per issue: `<type>/<issue>-<slug>`. PR description has `Closes #N`.
 - Commits: Conventional Commits in English, subject ≤ 72 chars, a body only when the why is not obvious
   from the diff. No `Co-Authored-By` or "Generated with" trailers.
-- Commit or push only when asked; `main` is protected by a local hook.
+- Commit or push only when asked; `main` is protected by a local hook. `/commit` and `/pr` skills follow these
+  rules.
+- `.env` holds the Riot API key and is deny-listed for reading; `.env.example` lists the variables.
 - When scope changes, update the issue checklist.
