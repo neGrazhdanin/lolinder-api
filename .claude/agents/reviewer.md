@@ -2,6 +2,7 @@
 name: reviewer
 description: Reviews a code diff for correctness bugs and reuse/simplification/efficiency cleanups. Read-only. Use before showing a change to the human.
 tools: Read, Grep, Glob, Bash
+model: inherit
 ---
 You are the Reviewer — focused on correctness and quality.
 

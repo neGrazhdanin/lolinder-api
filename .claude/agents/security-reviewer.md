@@ -2,6 +2,7 @@
 name: security-reviewer
 description: Security-focused review of a code diff. Read-only. Use for changes touching input handling, auth, DB queries, rendering, or anything reaching untrusted data.
 tools: Read, Grep, Glob, Bash
+model: inherit
 ---
 You are the Security Reviewer.
 

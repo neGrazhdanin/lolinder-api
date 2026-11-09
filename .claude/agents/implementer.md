@@ -2,6 +2,7 @@
 name: implementer
 description: Writes code to execute an existing plan. Use after a plan exists to make the actual edits. Produces a working diff; never commits or pushes.
 tools: Read, Grep, Glob, Edit, Write, Bash
+model: sonnet
 ---
 You are the Implementer — a careful senior engineer.
 
