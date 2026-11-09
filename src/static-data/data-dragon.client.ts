@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { DATA_DRAGON_LOCALES } from './static-data.constants.js';
 import {
   dataDragonVersionSchema,
-  type StaticDataSets,
+  type StaticDataImport,
   type StaticLocale,
 } from './static-data.schemas.js';
 
@@ -33,6 +33,7 @@ const itemsSchema = z.object({
     z.object({
       name: z.string(),
       plaintext: z.string().default(''),
+      description: z.string().default(''),
       image: imageSchema,
       gold: z.object({ total: z.number().int() }),
       tags: z.array(z.string()).default([]),
@@ -51,7 +52,13 @@ const runeTreesSchema = z.array(
     slots: z.array(
       z.object({
         runes: z.array(
-          z.object({ id: z.number().int(), key: z.string(), name: z.string(), icon: z.string() }),
+          z.object({
+            id: z.number().int(),
+            key: z.string(),
+            name: z.string(),
+            icon: z.string(),
+            longDesc: z.string().default(''),
+          }),
         ),
       }),
     ),
@@ -61,7 +68,14 @@ const runeTreesSchema = z.array(
 const summonerSpellsSchema = z.object({
   data: z.record(
     z.string(),
-    z.object({ id: z.string(), key: z.string(), name: z.string(), image: imageSchema }),
+    z.object({
+      id: z.string(),
+      key: z.string(),
+      name: z.string(),
+      image: imageSchema,
+      description: z.string().default(''),
+      cooldown: z.array(z.number()).default([]),
+    }),
   ),
 });
 
@@ -74,7 +88,7 @@ export class DataDragonClient {
   }
 
   /** Keeps only the fields the client renders, keyed by numeric Data Dragon IDs. */
-  async fetchSets(version: string, locale: StaticLocale): Promise<StaticDataSets> {
+  async fetchSets(version: string, locale: StaticLocale): Promise<StaticDataImport> {
     const base = `/cdn/${dataDragonVersionSchema.parse(version)}/data/${DATA_DRAGON_LOCALES[locale]}`;
     const [champions, items, runeTrees, summonerSpells] = await Promise.all([
       this.get(`${base}/champion.json`, championsSchema),
@@ -83,7 +97,8 @@ export class DataDragonClient {
       this.get(`${base}/summoner.json`, summonerSpellsSchema),
     ]);
 
-    return {
+    const runes = runeTrees.flatMap((tree) => tree.slots.flatMap((slot) => slot.runes));
+    const sets = {
       champions: Object.values(champions.data).map((champion) => ({
         id: Number(champion.key),
         key: champion.id,
@@ -122,6 +137,19 @@ export class DataDragonClient {
         image: spell.image.full,
       })),
     };
+    const descriptions = {
+      items: Object.entries(items.data).map(([id, item]) => ({
+        id: Number(id),
+        description: item.description,
+      })),
+      runes: runes.map((rune) => ({ id: rune.id, description: rune.longDesc })),
+      summonerSpells: Object.values(summonerSpells.data).map((spell) => ({
+        id: Number(spell.key),
+        description: spell.description,
+        cooldownSec: spell.cooldown[0] ?? null,
+      })),
+    };
+    return { sets, descriptions };
   }
 
   private async get<S extends z.ZodType>(path: string, schema: S): Promise<z.output<S>> {

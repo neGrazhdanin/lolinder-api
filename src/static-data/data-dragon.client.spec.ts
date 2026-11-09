@@ -32,7 +32,7 @@ describe('DataDragonClient', () => {
   it('keeps only rendered fields, keyed by numeric IDs, in the requested locale', async () => {
     mockDataDragon();
 
-    const sets = await client.fetchSets(LATEST_VERSION, 'ru');
+    const { sets, descriptions } = await client.fetchSets(LATEST_VERSION, 'ru');
 
     expect(sets.champions).toEqual([
       { id: 266, key: 'Aatrox', name: 'Атрокс', title: 'the Darkin Blade', image: 'Aatrox.png' },
@@ -80,6 +80,24 @@ describe('DataDragonClient', () => {
     expect(sets.summonerSpells).toEqual([
       { id: 4, key: 'SummonerFlash', name: 'Скачок', image: 'SummonerFlash.png' },
     ]);
+    expect(descriptions).toEqual({
+      items: [
+        {
+          id: 1001,
+          description: '<mainText><stats><attention>25</attention> Move Speed</stats></mainText>',
+        },
+        { id: 2003, description: '' },
+      ],
+      runes: [
+        {
+          id: 8112,
+          description: 'Hitting a champion with <b>3</b> separate attacks deals bonus damage.',
+        },
+      ],
+      summonerSpells: [
+        { id: 4, description: 'Teleports your champion a short distance.', cooldownSec: 300 },
+      ],
+    });
   });
 
   it('fails on a non-2xx response', async () => {

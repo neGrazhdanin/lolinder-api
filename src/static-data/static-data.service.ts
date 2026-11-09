@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import { StaticDataKind } from '../generated/prisma/enums.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
-import { KIND_OF_SET } from './static-data.constants.js';
+import { IMPORTED_KINDS, KIND_OF_SET } from './static-data.constants.js';
 import {
   type StaticDataBundle,
-  type StaticDataSets,
+  type StaticDataDescriptions,
+  type StaticDataImport,
   type StaticLocale,
+  staticDataDescriptionsSchema,
   staticDataSetsSchema,
 } from './static-data.schemas.js';
 
@@ -22,7 +25,9 @@ export class StaticDataService {
   }
 
   async bundle(version: string, locale: StaticLocale): Promise<StaticDataBundle | null> {
-    const rows = await this.prisma.staticData.findMany({ where: { patch: version, locale } });
+    const rows = await this.prisma.staticData.findMany({
+      where: { patch: version, locale, kind: { in: Object.values(KIND_OF_SET) } },
+    });
     if (rows.length === 0) {
       return null;
     }
@@ -35,19 +40,35 @@ export class StaticDataService {
     return { version, locale, ...staticDataSetsSchema.parse(sets) };
   }
 
-  async hasVersion(version: string): Promise<boolean> {
-    return (await this.prisma.staticData.count({ where: { patch: version } })) > 0;
+  async descriptions(
+    version: string,
+    locale: StaticLocale,
+  ): Promise<StaticDataDescriptions | null> {
+    const row = await this.prisma.staticData.findUnique({
+      where: { patch_locale_kind: { patch: version, locale, kind: StaticDataKind.DESCRIPTIONS } },
+    });
+    return row ? staticDataDescriptionsSchema.parse(row.data) : null;
   }
 
-  async saveVersion(version: string, setsByLocale: Record<StaticLocale, StaticDataSets>) {
-    const rows = Object.entries(setsByLocale).flatMap(([locale, sets]) =>
-      Object.entries(KIND_OF_SET).map(([set, kind]) => ({
+  /** A patch imported before a kind existed counts as missing, so the next sync completes it. */
+  async hasVersion(version: string): Promise<boolean> {
+    const kinds = await this.prisma.staticData.groupBy({
+      by: ['kind'],
+      where: { patch: version },
+    });
+    return IMPORTED_KINDS.every((kind) => kinds.some((row) => row.kind === kind));
+  }
+
+  async saveVersion(version: string, importsByLocale: Record<StaticLocale, StaticDataImport>) {
+    const rows = Object.entries(importsByLocale).flatMap(([locale, { sets, descriptions }]) => [
+      ...Object.entries(KIND_OF_SET).map(([set, kind]) => ({
         patch: version,
         locale,
         kind,
-        data: sets[set as keyof StaticDataSets],
+        data: sets[set as keyof typeof sets],
       })),
-    );
+      { patch: version, locale, kind: StaticDataKind.DESCRIPTIONS, data: descriptions },
+    ]);
     await this.prisma.$transaction([
       this.prisma.staticData.deleteMany({ where: { patch: version } }),
       this.prisma.staticData.createMany({ data: rows }),

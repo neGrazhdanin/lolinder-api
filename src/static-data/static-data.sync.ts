@@ -3,7 +3,7 @@ import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common'
 import type { Queue } from 'bullmq';
 import { DataDragonClient } from './data-dragon.client.js';
 import { STATIC_DATA_QUEUE } from './static-data.constants.js';
-import { STATIC_LOCALES, type StaticDataSets, type StaticLocale } from './static-data.schemas.js';
+import { STATIC_LOCALES, type StaticDataImport, type StaticLocale } from './static-data.schemas.js';
 import { StaticDataService } from './static-data.service.js';
 
 const SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -37,7 +37,7 @@ export class StaticDataSyncProcessor extends WorkerHost {
     );
     await this.staticData.saveVersion(
       version,
-      Object.fromEntries(entries) as Record<StaticLocale, StaticDataSets>,
+      Object.fromEntries(entries) as Record<StaticLocale, StaticDataImport>,
     );
     this.logger.log(`Imported Data Dragon ${version}`);
     return { version, imported: true };

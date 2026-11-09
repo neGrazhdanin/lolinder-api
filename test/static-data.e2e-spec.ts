@@ -7,7 +7,9 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/bootstrap/configure-app.js';
 import { createFastifyAdapter } from '../src/bootstrap/fastify-adapter.js';
 import { CoreModule } from '../src/core/core.module.js';
+import { StaticDataKind } from '../src/generated/prisma/enums.js';
 import { InfraModule } from '../src/infra/infra.module.js';
+import { PrismaService } from '../src/infra/prisma/prisma.service.js';
 import { DataDragonClient } from '../src/static-data/data-dragon.client.js';
 import { StaticDataService } from '../src/static-data/static-data.service.js';
 import { StaticDataSyncProcessor } from '../src/static-data/static-data.sync.js';
@@ -88,8 +90,27 @@ describe('static data (e2e)', () => {
     expect(en.json().champions[0].name).toBe('Aatrox');
   });
 
+  it('serves descriptions separately from the bundle, cached forever', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/static-data/${LATEST_VERSION}/ru/descriptions`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+    expect(res.json()).toMatchObject({
+      items: [{ id: 1001, description: expect.stringContaining('<stats>') }, { id: 2003 }],
+      runes: [{ id: 8112 }],
+      summonerSpells: [{ id: 4, cooldownSec: 300 }],
+    });
+
+    const bundle = await app.inject({ method: 'GET', url: `/static-data/${LATEST_VERSION}/ru` });
+    expect(bundle.json().items[0]).not.toHaveProperty('description');
+  });
+
   it.each([
     ['an unknown version', '/static-data/1.0.1/en', 404, 'NOT_FOUND'],
+    ['descriptions of an unknown version', '/static-data/1.0.1/en/descriptions', 404, 'NOT_FOUND'],
     ['a malformed version', '/static-data/latest.json/en', 400, 'VALIDATION_FAILED'],
     ['an unsupported locale', `/static-data/${LATEST_VERSION}/de`, 400, 'VALIDATION_FAILED'],
   ])('rejects %s', async (_, url, status, code) => {
@@ -109,6 +130,26 @@ describe('static data (e2e)', () => {
 
     expect(await processor.process()).toEqual({ version: LATEST_VERSION, imported: false });
     expect(versions.isDone()).toBe(true);
+  });
+
+  it('completes a patch imported before descriptions existed', async () => {
+    const prisma = app.get(PrismaService);
+    await prisma.staticData.deleteMany({
+      where: { patch: LATEST_VERSION, kind: StaticDataKind.DESCRIPTIONS },
+    });
+    const dataDragon = mockDataDragon();
+    const processor = new StaticDataSyncProcessor(
+      new DataDragonClient(),
+      app.get(StaticDataService),
+    );
+
+    expect(await processor.process()).toEqual({ version: LATEST_VERSION, imported: true });
+    expect(dataDragon.isDone()).toBe(true);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/static-data/${LATEST_VERSION}/en/descriptions`,
+    });
+    expect(res.statusCode).toBe(200);
   });
 
   it('documents the bundle schema for the generated client', async () => {
