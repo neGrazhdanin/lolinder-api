@@ -6,3 +6,8 @@ coverage/
 .env.*
 !.env.example
 src/generated/
+
+# Claude Code personal files
+.claude/settings.local.json
+CLAUDE.local.md
+.playwright-mcp/
